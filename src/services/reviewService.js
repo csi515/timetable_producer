@@ -369,7 +369,14 @@ export const calculateTeacherHoursValidation = (data, teacherHours) => {
     const isTotalHoursMatch = Math.abs(totalDifference) <= DEFAULT_VALUES.HOURS_TOLERANCE;
 
     if (!isTotalHoursMatch) {
-      issues.push(`${teacherName}: 총 시수 불일치 (실제: ${actualTotalHours}시간, 요구: ${requiredTotalHours}시간, 차이: ${totalDifference}시간)`);
+      issues.push({
+        type: 'TEACHER_HOURS_MISMATCH',
+        teacherName: teacherName,
+        actual: actualTotalHours,
+        expected: requiredTotalHours,
+        difference: totalDifference,
+        message: `${teacherName}: 총 시수 불일치 (실제: ${actualTotalHours}시간, 요구: ${requiredTotalHours}시간, 차이: ${totalDifference}시간)`
+      });
     }
 
     // 학급별 상세 분석 계산

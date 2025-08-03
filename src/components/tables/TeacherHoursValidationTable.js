@@ -167,7 +167,11 @@ const TeacherHoursValidationTable = ({ validationResult, data }) => {
           <div className="space-y-2">
             {issues.map((issue, index) => (
               <div key={index} className="bg-red-50 border border-red-200 p-3 rounded">
-                <div className="text-red-800 font-medium">{String(issue)}</div>
+                <div className="text-red-800 font-medium">
+                  {typeof issue === 'string' ? issue : 
+                   issue.message ? issue.message : 
+                   JSON.stringify(issue)}
+                </div>
               </div>
             ))}
           </div>

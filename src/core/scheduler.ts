@@ -64,7 +64,7 @@ const calculatePlacementPriority = (
   return priority;
 };
 
-// 과목별 배치 계획 수립
+// 과목별 배치 계획 수립 (교사 시수 제한 고려)
 export const createPlacementPlan = (
   schedule: Schedule,
   data: TimetableData,
@@ -75,6 +75,12 @@ export const createPlacementPlan = (
   const classNames = Object.keys(schedule);
   const subjectPlacementPlan: PlacementPlan[] = [];
   const defaultWeeklyHours = getDefaultWeeklyHours();
+
+  // 교사별 현재 시수 추적
+  const teacherCurrentHours: Record<string, number> = {};
+  teachers.forEach(teacher => {
+    teacherCurrentHours[teacher.name] = getCurrentTeacherHours(schedule, teacher.name);
+  });
 
   classNames.forEach(className => {
     subjects.forEach(subject => {
@@ -155,13 +161,27 @@ export const executePlacementPlan = (
     attempts++;
     const placement = placementPlan.shift()!;
 
-    // 교사별 시수 균형을 고려하여 교사 선택
+    // 교사별 시수 균형을 고려하여 교사 선택 (시수 제한 엄격 적용)
     const teachersWithPriority = placement.availableTeachers.map(teacher => {
       const currentHours = teacherHours[teacher.name]?.current || 0;
-      const maxHours = teacherHours[teacher.name]?.max || 25;
+      const maxHours = teacherHours[teacher.name]?.max || teacher.maxHours || 25;
       const remainingHours = maxHours - currentHours;
 
       let priority = 0;
+
+      // 시수 초과 교사는 완전히 제외
+      if (remainingHours <= 0) {
+        return { teacher, priority: -1, remainingHours, excluded: true };
+      }
+
+      // 해당 학급 시수 제한 확인 (더 엄격하게)
+      const classKey = convertClassNameToKey(placement.className);
+      const classHoursLimit = teacher.weeklyHoursByGrade?.[classKey] || 0;
+      const currentClassHours = getCurrentTeacherHours(schedule, teacher.name, placement.className);
+      
+      if (classHoursLimit > 0 && currentClassHours >= classHoursLimit) {
+        return { teacher, priority: -1, remainingHours, excluded: true }; // 학급 시수 제한 초과 시 완전 배제
+      }
 
       // 공동수업 제약조건이 있는 교사는 우선순위를 낮춤
       const coTeachingConstraints = (data.constraints?.must || []).filter(c =>
@@ -171,22 +191,37 @@ export const executePlacementPlan = (
         priority += 1000;
       }
 
-      // 교사 시수 부족도 (부족할수록 우선)
-      priority += Math.max(0, 25 - remainingHours) * 100;
+      // 교사 시수 부족도 (부족할수록 우선) - 시수 제한을 더 엄격하게 적용
+      priority += Math.max(0, maxHours - remainingHours) * 100;
+
+      // 시수 여유도가 적은 교사는 우선순위를 낮춤 (시수 초과 방지)
+      if (remainingHours <= 2) {
+        priority -= 1000; // 더 강한 페널티
+      }
 
       // 랜덤 요소
       priority += Math.random() * 10;
 
-      return { teacher, priority, remainingHours };
+      return { teacher, priority, remainingHours, excluded: false };
     });
 
-    teachersWithPriority.sort((a, b) => a.priority - b.priority);
+    // 제외된 교사 필터링 후 정렬
+    const availableTeachers = teachersWithPriority
+      .filter(t => !t.excluded && t.remainingHours > 0)
+      .sort((a, b) => a.priority - b.priority);
+
+    if (availableTeachers.length === 0) {
+      addLog(`⚠️ ${placement.subject} 과목을 가르칠 수 있는 시수 여유가 있는 교사가 없습니다.`, 'warning');
+      failedPlacements.push(placement);
+      continue;
+    }
 
     // 적합한 교사와 슬롯 찾기
     let placed = false;
-    for (const teacherInfo of teachersWithPriority) {
-      const { teacher } = teacherInfo;
+    for (const teacherInfo of availableTeachers) {
+      const { teacher, remainingHours } = teacherInfo;
 
+      // 시수 제한 재확인
       if (teacherHours[teacher.name]?.current >= teacherHours[teacher.name]?.max) {
         continue;
       }
@@ -364,24 +399,59 @@ export const generateTimetable = async (
   addLog(`✅ 교사 시수 재조정 완료: ${rebalancedCount}개 수정`, 'success');
   setProgress?.(85);
 
-  // 10단계: 교사 중복 배정 최종 검증 (절대 필수!)
-  addLog('10단계: 교사 중복 배정을 최종 검증합니다.', 'info');
+  // 10단계: 교사 시수 제한 최종 검증 (절대 필수!)
+  addLog('10단계: 교사 시수 제한을 최종 검증합니다.', 'info');
+  const teachers = data.teachers || [];
+  let teacherHoursValid = true;
+  
+  teachers.forEach(teacher => {
+    const currentHours = teacherHours[teacher.name]?.current || 0;
+    const maxHours = teacherHours[teacher.name]?.max || teacher.maxHours || 25;
+    
+    if (currentHours > maxHours) {
+      addLog(`🚨 ${teacher.name} 교사 시수 초과: ${currentHours}시간 > ${maxHours}시간`, 'error');
+      teacherHoursValid = false;
+    }
+    
+    // 학급별 시수 제한도 확인
+    const classNames = Object.keys(schedule);
+    classNames.forEach(className => {
+      const classKey = convertClassNameToKey(className);
+      const classHoursLimit = teacher.weeklyHoursByGrade?.[classKey] || 0;
+      const currentClassHours = getCurrentTeacherHours(schedule, teacher.name, className);
+      
+      if (classHoursLimit > 0 && currentClassHours > classHoursLimit) {
+        addLog(`🚨 ${teacher.name} 교사 ${className} 학급 시수 초과: ${currentClassHours}시간 > ${classHoursLimit}시간`, 'error');
+        teacherHoursValid = false;
+      }
+    });
+  });
+  
+  if (!teacherHoursValid) {
+    addLog('🚨 교사 시수 제한 위반이 발견되었습니다! 시간표를 재생성해주세요.', 'error');
+  } else {
+    addLog('✅ 모든 교사의 시수 제한이 준수되었습니다.', 'success');
+  }
+  setProgress?.(87);
+
+  // 11단계: 교사 중복 배정 최종 검증 (절대 필수!)
+  addLog('11단계: 교사 중복 배정을 최종 검증합니다.', 'info');
   const teacherConflictValid = validateScheduleTeacherConflicts(schedule, addLog);
   if (!teacherConflictValid) {
     addLog('🚨 교사 중복 배정이 발견되었습니다! 시간표를 재생성해주세요.', 'error');
   }
-  setProgress?.(87);
+  setProgress?.(90);
 
-  // 11단계: 공동수업 제약조건 검증
-  addLog('11단계: 공동수업 제약조건을 검증합니다.', 'info');
+  // 12단계: 공동수업 제약조건 검증
+  addLog('12단계: 공동수업 제약조건을 검증합니다.', 'info');
   const coTeachingValid = validateCoTeachingConstraints(schedule, data, addLog);
   if (!coTeachingValid) {
     addLog('⚠️ 공동수업 제약조건 검증에서 문제가 발견되었습니다.', 'warning');
   }
-  setProgress?.(90);
+  setProgress?.(93);
 
-  // 12단계: 통계 계산
-  addLog('12단계: 통계를 계산합니다.', 'info');
+  // 13단계: 통계 계산
+  addLog('13단계: 통계를 계산합니다.', 'info');
   const stats = calculateScheduleStats(schedule, teacherHours);
   setProgress?.(100);
 
@@ -474,20 +544,45 @@ const optimizeTeacherAssignments = (
   
   addLog('🔄 교사별 수업 재조정을 시작합니다.', 'info');
   
-  // 1단계: 교사별 시수 부족도 분석
+  // 1단계: 교사별 시수 부족도 분석 (시수 제한 엄격 적용)
   const teacherDeficits = teachers.map(teacher => {
     const currentHours = teacherHours[teacher.name]?.current || 0;
-    const targetHours = teacher.maxHours || 18;
-    const deficit = Math.max(0, targetHours - currentHours);
+    const maxHours = teacherHours[teacher.name]?.max || teacher.maxHours || 25;
+    const deficit = Math.max(0, maxHours - currentHours);
+    
+    // 시수 초과 교사는 제외
+    if (deficit <= 0) {
+      return {
+        teacher,
+        currentHours,
+        maxHours,
+        deficit: 0,
+        priority: -1,
+        excluded: true
+      };
+    }
+    
+    // 시수 여유도가 매우 적은 교사는 제외 (시수 초과 방지)
+    if (deficit <= 1) {
+      return {
+        teacher,
+        currentHours,
+        maxHours,
+        deficit,
+        priority: -1,
+        excluded: true
+      };
+    }
     
     return {
       teacher,
       currentHours,
-      targetHours,
+      maxHours,
       deficit,
-      priority: deficit * 10 + Math.random() * 5 // 부족도 + 랜덤 요소
+      priority: deficit * 10 + Math.random() * 5, // 부족도 + 랜덤 요소
+      excluded: false
     };
-  }).sort((a, b) => b.priority - a.priority); // 부족도가 높은 교사 우선
+  }).filter(t => !t.excluded).sort((a, b) => b.priority - a.priority); // 부족도가 높은 교사 우선
   
   // 2단계: 빈 슬롯과 교사 매칭 최적화
   teacherDeficits.forEach(({ teacher, deficit }) => {
@@ -672,7 +767,7 @@ const findBestSubjectForSlot = (
   return subjectPriorities[0]?.subject || null;
 };
 
-// 가장 적합한 교사 찾기
+// 가장 적합한 교사 찾기 (시수 제한 엄격 적용)
 const findBestTeacherForSubject = (
   availableTeachers: any[],
   subjectName: string,
@@ -683,36 +778,60 @@ const findBestTeacherForSubject = (
 ): any => {
   if (availableTeachers.length === 0) return null;
   
-  // 교사별 우선순위 계산
+  // 교사별 우선순위 계산 (시수 제한 엄격 적용)
   const teacherPriorities = availableTeachers.map(teacher => {
     let priority = 0;
     
-    // 1. 시수 부족도 (부족할수록 높은 우선순위)
+    // 1. 시수 초과 교사는 완전히 제외
     const currentHours = teacherHours[teacher.name]?.current || 0;
-    const targetHours = teacher.maxHours || 18;
-    const deficit = Math.max(0, targetHours - currentHours);
+    const maxHours = teacherHours[teacher.name]?.max || teacher.maxHours || 25;
+    const remainingHours = maxHours - currentHours;
+    
+    if (remainingHours <= 0) {
+      return { teacher, priority: -1, excluded: true };
+    }
+    
+    // 2. 시수 부족도 (부족할수록 높은 우선순위)
+    const deficit = Math.max(0, maxHours - currentHours);
     priority += deficit * 10;
     
-    // 2. 해당 학급 담당 경험 (담당 시수 제한 확인)
+    // 3. 해당 학급 담당 시수 제한 확인
     const classKey = convertClassNameToKey(className);
     const classHoursLimit = teacher.weeklyHoursByGrade?.[classKey] || 0;
     const currentClassHours = getCurrentTeacherHours(schedule, teacher.name, className);
     
     if (classHoursLimit > 0 && currentClassHours >= classHoursLimit) {
-      priority -= 1000; // 학급 시수 제한 초과 시 배제
+      return { teacher, priority: -1, excluded: true }; // 학급 시수 제한 초과 시 완전 배제
     }
     
-    // 3. 랜덤 요소
+    // 4. 시수 여유도가 적은 교사는 우선순위를 낮춤 (시수 초과 방지)
+    if (remainingHours <= 2) {
+      priority -= 500;
+    }
+    
+    // 5. 공동수업 제약조건이 있는 교사는 우선순위를 낮춤
+    const coTeachingConstraints = (data.constraints?.must || []).filter(c =>
+      c.type === 'specific_teacher_co_teaching' && c.mainTeacher === teacher.name
+    );
+    if (coTeachingConstraints.length > 0) {
+      priority += 1000;
+    }
+    
+    // 6. 랜덤 요소
     priority += Math.random() * 5;
     
-    return { teacher, priority };
+    return { teacher, priority, excluded: false };
   });
   
-  teacherPriorities.sort((a, b) => b.priority - a.priority);
-  return teacherPriorities[0]?.teacher || null;
+  // 제외된 교사 필터링 후 정렬
+  const availableTeachersFiltered = teacherPriorities
+    .filter(t => !t.excluded)
+    .sort((a, b) => b.priority - a.priority);
+  
+  return availableTeachersFiltered[0]?.teacher || null;
 };
 
-// 슬롯에 과목 배치 시도
+// 슬롯에 과목 배치 시도 (시수 제한 엄격 적용)
 const tryPlaceSubjectInSlot = (
   schedule: Schedule,
   className: string,
@@ -724,6 +843,25 @@ const tryPlaceSubjectInSlot = (
   teacherHours: TeacherHoursTracker,
   addLog: (message: string, type?: string) => void
 ): boolean => {
+  // 교사 시수 제한 엄격 확인
+  const currentHours = teacherHours[teacher.name]?.current || 0;
+  const maxHours = teacherHours[teacher.name]?.max || teacher.maxHours || 25;
+  
+  if (currentHours >= maxHours) {
+    addLog(`⚠️ ${teacher.name} 교사 시수 초과로 배치 불가 (현재: ${currentHours}시간, 최대: ${maxHours}시간)`, 'warning');
+    return false;
+  }
+  
+  // 해당 학급 시수 제한 확인
+  const classKey = convertClassNameToKey(className);
+  const classHoursLimit = teacher.weeklyHoursByGrade?.[classKey] || 0;
+  const currentClassHours = getCurrentTeacherHours(schedule, teacher.name, className);
+  
+  if (classHoursLimit > 0 && currentClassHours >= classHoursLimit) {
+    addLog(`⚠️ ${teacher.name} 교사 ${className} 학급 시수 제한 초과로 배치 불가 (현재: ${currentClassHours}시간, 제한: ${classHoursLimit}시간)`, 'warning');
+    return false;
+  }
+  
   // 제약조건 검증
   const unavailableCheck = checkTeacherUnavailable(teacher, day, period);
   if (!unavailableCheck.allowed) {
@@ -793,7 +931,7 @@ const tryReplaceTeacherInSlot = (
   return true;
 };
 
-// 교사 배정 최적화 가능 여부 확인
+// 교사 배정 최적화 가능 여부 확인 (시수 제한 엄격 적용)
 const canOptimizeTeacherAssignment = (
   schedule: Schedule,
   className: string,
@@ -804,6 +942,14 @@ const canOptimizeTeacherAssignment = (
   data: TimetableData,
   teacherHours: TeacherHoursTracker
 ): boolean => {
+  // 교사 시수 제한 엄격 확인
+  const currentHours = teacherHours[newTeacher.name]?.current || 0;
+  const maxHours = teacherHours[newTeacher.name]?.max || newTeacher.maxHours || 25;
+  
+  if (currentHours >= maxHours) {
+    return false; // 시수 초과 교사는 교체 불가
+  }
+  
   // 제약조건 검증
   const unavailableCheck = checkTeacherUnavailable(newTeacher, day, period);
   if (!unavailableCheck.allowed) {
@@ -819,6 +965,15 @@ const canOptimizeTeacherAssignment = (
   // 교사가 해당 과목을 가르칠 수 있는지 확인
   if (!newTeacher.subjects?.includes(subjectName)) {
     return false;
+  }
+  
+  // 해당 학급 시수 제한 확인
+  const classKey = convertClassNameToKey(className);
+  const classHoursLimit = newTeacher.weeklyHoursByGrade?.[classKey] || 0;
+  const currentClassHours = getCurrentTeacherHours(schedule, newTeacher.name, className);
+  
+  if (classHoursLimit > 0 && currentClassHours >= classHoursLimit) {
+    return false; // 학급 시수 제한 초과 시 교체 불가
   }
   
   return true;
