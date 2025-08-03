@@ -6,6 +6,7 @@ import TeacherHoursTable from '../tables/TeacherHoursTable';
 import CoTeachingTable from '../tables/CoTeachingTable';
 import IssuesTable from '../tables/IssuesTable';
 import WeeklyHoursComparisonTable from '../tables/WeeklyHoursComparisonTable';
+import TeacherHoursValidationTable from '../tables/TeacherHoursValidationTable';
 
 /**
  * 최종 검토 컴포넌트
@@ -63,9 +64,14 @@ const FinalReview = ({ data, updateData, nextStep, prevStep }) => {
 
         {/* 주간 시수 비교 분석 */}
         <WeeklyHoursComparisonTable 
-          classHours={reviewData.classHours}
           teacherHours={reviewData.teacherHours}
           coTeachingClasses={reviewData.coTeachingClasses}
+          data={data}
+        />
+
+        {/* 교사 시수 일치 검증 (공동수업 고려) */}
+        <TeacherHoursValidationTable 
+          validationResult={reviewData.teacherHoursValidation}
           data={data}
         />
 

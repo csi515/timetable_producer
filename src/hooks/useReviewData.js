@@ -26,7 +26,8 @@ export const useReviewData = (data) => {
     classHours: reviewData?.classHours || defaultReviewData.classHours,
     teacherHours: reviewData?.teacherHours || defaultReviewData.teacherHours,
     coTeachingClasses: reviewData?.coTeachingClasses || defaultReviewData.coTeachingClasses,
-    issues: reviewData?.issues || defaultReviewData.issues
+    issues: reviewData?.issues || defaultReviewData.issues,
+    teacherHoursValidation: reviewData?.teacherHoursValidation || defaultReviewData.teacherHoursValidation
   }), [reviewData, defaultReviewData]);
 
   // 시수 계산 및 검토

@@ -72,7 +72,23 @@ function SortableConstraintItem({ constraint, index, priority, onRemove, getCons
           <h4 className="text-ellipsis" style={{ color: textColor, marginBottom: '5px' }} title={getConstraintTypeName(constraint.type)}>
             {getConstraintTypeName(constraint.type)}
           </h4>
-          {constraint.subject && <p className="text-ellipsis"><strong>과목:</strong> <span title={constraint.subject}>{constraint.subject}</span></p>}
+          {constraint.subject && (
+            <p className="text-ellipsis">
+              <strong>과목:</strong> <span title={constraint.subject === 'all' ? '모든 수업에 해당' : constraint.subject}>
+                {constraint.subject === 'all' ? '모든 수업에 해당' : constraint.subject}
+              </span>
+            </p>
+          )}
+          {constraint.subjects && constraint.subjects.length > 0 && (
+            <p className="text-ellipsis">
+              <strong>고정수업 전용 과목:</strong> <span title={constraint.subjects.join(', ')}>
+                {constraint.subjects.length > 3 ? 
+                  `${constraint.subjects.slice(0, 3).join(', ')}... (${constraint.subjects.length}개)` : 
+                  constraint.subjects.join(', ')
+                }
+              </span>
+            </p>
+          )}
           {constraint.day && <p className="text-ellipsis"><strong>시간:</strong> {constraint.day}요일 {constraint.period}교시</p>}
           {constraint.mainTeacher && (
             <p className="text-ellipsis">
@@ -118,6 +134,7 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
     type: '',
     priority: 'must',
     subject: '',
+    subjects: [],
     day: '',
     period: '',
     description: '',
@@ -280,6 +297,14 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
       hasTime: false
     },
     {
+      id: 'subject_fixed_only',
+      name: '고정수업 전용 과목',
+      description: '특정 과목들을 고정수업으로만 배치하고 랜덤 배치 제외',
+      hasSubject: false,
+      hasTime: false,
+      hasSubjects: true
+    },
+    {
       id: 'subject_blocked_period',
       name: '과목별 시간 제한',
       description: '특정 과목을 특정 시간에 배치하지 않음',
@@ -397,11 +422,20 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
         }
       }
 
+    // 고정수업 전용 과목 제약조건 검증
+    if (newConstraint.type === 'subject_fixed_only') {
+      if (!newConstraint.subjects || newConstraint.subjects.length === 0) {
+        alert('고정수업 전용으로 설정할 과목을 최소 1개 이상 선택해주세요.');
+        return;
+      }
+    }
+
     const constraintData = {
       id: Date.now(),
       type: newConstraint.type,
       description: newConstraint.description,
       ...(newConstraint.subject && { subject: newConstraint.subject }),
+      ...(newConstraint.subjects && { subjects: newConstraint.subjects }),
       ...(newConstraint.day && { day: newConstraint.day }),
       ...(newConstraint.period && { period: parseInt(newConstraint.period) }),
       ...(newConstraint.mainTeacher && { mainTeacher: newConstraint.mainTeacher }),
@@ -419,6 +453,7 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
       type: '',
       priority: 'must',
       subject: '',
+      subjects: [],
       day: '',
       period: '',
       description: '',
@@ -605,12 +640,52 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
               onChange={(e) => setNewConstraint({ ...newConstraint, subject: e.target.value })}
             >
               <option value="">과목 선택</option>
+              <option value="all">모든 수업에 해당</option>
               {data.subjects.map((subject, index) => (
                 <option key={index} value={subject.name}>
                   {subject.name}
                 </option>
               ))}
             </select>
+          </div>
+        )}
+
+        {getCurrentConstraintType()?.hasSubjects && (
+          <div className="form-group">
+            <label>고정수업 전용 과목들</label>
+            <div style={{ border: '1px solid #ddd', borderRadius: '4px', padding: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+              {data.subjects.map((subject, index) => (
+                <div key={index} style={{ marginBottom: '4px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', margin: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={newConstraint.subjects?.includes(subject.name) || false}
+                      onChange={(e) => {
+                        const currentSubjects = newConstraint.subjects || [];
+                        if (e.target.checked) {
+                          setNewConstraint({ 
+                            ...newConstraint, 
+                            subjects: [...currentSubjects, subject.name] 
+                          });
+                        } else {
+                          setNewConstraint({ 
+                            ...newConstraint, 
+                            subjects: currentSubjects.filter(s => s !== subject.name) 
+                          });
+                        }
+                      }}
+                      style={{ marginRight: '8px' }}
+                    />
+                    {subject.name}
+                  </label>
+                </div>
+              ))}
+            </div>
+            {newConstraint.subjects && newConstraint.subjects.length > 0 && (
+              <div style={{ marginTop: '8px', fontSize: '12px', color: '#666' }}>
+                선택된 과목: {newConstraint.subjects.join(', ')}
+              </div>
+            )}
           </div>
         )}
 

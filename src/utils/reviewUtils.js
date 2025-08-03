@@ -163,5 +163,10 @@ export const createDefaultReviewData = () => ({
   classHours: {},
   teacherHours: {},
   coTeachingClasses: [],
-  issues: []
+  issues: [],
+  teacherHoursValidation: {
+    isValid: true,
+    issues: [],
+    teacherDetails: {}
+  }
 }); 

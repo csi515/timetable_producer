@@ -70,7 +70,7 @@ function ReviewAndExport({ data, updateData, prevStep }) {
     
     days.forEach(day => {
       if (schedule[className][day]) {
-        schedule[className][day].forEach(slot => {
+        Object.values(schedule[className][day]).forEach(slot => {
           if (slot) {
             if (typeof slot === 'object' && slot.subject) {
               if (slot.subject === subjectName) {
@@ -115,7 +115,7 @@ function ReviewAndExport({ data, updateData, prevStep }) {
     Object.entries(data.schedule || {}).forEach(([className, classSchedule]) => {
       days.forEach(day => {
         if (classSchedule && classSchedule[day]) {
-          classSchedule[day].forEach((scheduleItem, periodIndex) => {
+          Object.values(classSchedule[day]).forEach((scheduleItem, periodIndex) => {
             if (scheduleItem) {
               let subject = '';
               let isCoTeaching = false;
@@ -130,10 +130,16 @@ function ReviewAndExport({ data, updateData, prevStep }) {
               // 시간표 아이템이 문자열인 경우 (기존 형식)
               else if (typeof scheduleItem === 'string' && scheduleItem.trim() !== '') {
                 subject = scheduleItem;
-                // 해당 과목을 담당할 수 있는 교사들 찾기
-                const availableTeachers = data.teachers.filter(t => 
-                  t.subjects && t.subjects.includes(subject)
-                );
+                // 해당 과목을 담당할 수 있는 교사들 찾기 (원어민-영어 관계 고려)
+                const availableTeachers = data.teachers.filter(t => {
+                  if (!t.subjects) return false;
+                  // 정확히 같은 과목을 담당하는 경우
+                  if (t.subjects.includes(subject)) return true;
+                  // 원어민-영어 간 공동수업 관계 고려
+                  if (subject === '원어민' && t.subjects.includes('영어')) return true;
+                  if (subject === '영어' && t.subjects.includes('원어민')) return true;
+                  return false;
+                });
                 teachers = availableTeachers.map(t => t.name);
                 isCoTeaching = false;
               }
@@ -144,8 +150,21 @@ function ReviewAndExport({ data, updateData, prevStep }) {
               // 교사가 해당 과목을 담당하거나 공동수업에 참여하는 경우
               if (subject && isTeacherInvolved) {
                 const currentEntry = teacherSchedule[day][periodIndex];
-                const coTeachingSuffix = isCoTeaching ? ' (공동)' : '';
-                const newEntry = `${subject}${coTeachingSuffix} (${className})`;
+                
+                // 고정 수업 여부 확인
+                const isFixed = scheduleItem && typeof scheduleItem === 'object' && scheduleItem.isFixed;
+                
+                // 수업 유형에 따른 접미사 설정
+                let suffix = '';
+                if (isCoTeaching && isFixed) {
+                  suffix = ' (고정공동)';
+                } else if (isCoTeaching) {
+                  suffix = ' (공동)';
+                } else if (isFixed) {
+                  suffix = ' (고정)';
+                }
+                
+                const newEntry = `${subject}${suffix} (${className})`;
                 
                 if (currentEntry && currentEntry.trim() !== '') {
                   // 병행 수업인 경우
@@ -194,15 +213,17 @@ function ReviewAndExport({ data, updateData, prevStep }) {
       if (classSchedule) {
         days.forEach(day => {
           if (classSchedule[day]) {
-            classSchedule[day].forEach(scheduleItem => {
+            Object.values(classSchedule[day]).forEach(scheduleItem => {
               if (scheduleItem) {
                 let subject = '';
                 
-                // 공동 수업인 경우
-                if (typeof scheduleItem === 'object' && scheduleItem.isCoTeaching) {
+                // 객체인 경우 (새로운 형식)
+                if (typeof scheduleItem === 'object' && scheduleItem.subject) {
                   subject = scheduleItem.subject;
-                } else {
-                  subject = scheduleItem;
+                } 
+                // 문자열인 경우 (기존 형식)
+                else if (typeof scheduleItem === 'string' && scheduleItem.trim() !== '') {
+                  subject = scheduleItem.trim();
                 }
                 
                 if (subject && stats[subject]) {
@@ -471,7 +492,9 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                                     displayText = `${convertedItem.subject} (${teachers[0]})`;
                                   }
                                   titleText = `${convertedItem.subject} - ${teachers.join(', ')}`;
-                                  bgColor = convertedItem.isFixed ? '#e8f5ff' : '#e8f5ff'; // 공동 수업은 파란색 배경
+                                  // 공동수업은 파란색 배경으로 표시
+                                  bgColor = convertedItem.isFixed ? '#d4edda' : '#e3f2fd';
+                                  displayText += ' (공동)';
                                 } else {
                                   // 단일 교사 수업인 경우
                                   const teachers = convertedItem.teachers || [];
@@ -486,7 +509,7 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                                 }
                                 
                                 // 고정 수업 표시
-                                if (convertedItem.isFixed) {
+                                if (convertedItem.isFixed && !convertedItem.isCoTeaching) {
                                   displayText += ' (고정)';
                                 }
                               } else {
@@ -525,7 +548,9 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                 fontSize: '11px'
               }}>
                 <strong>표시 형식:</strong> 학급코드 과목명 (예: 101 국어) | 
-                <span style={{ color: '#1976d2' }}> * 공동수업</span> | 
+                <span style={{ color: '#1976d2', backgroundColor: '#e3f2fd', padding: '2px 4px', borderRadius: '3px' }}> * 공동수업</span> |
+                <span style={{ color: '#155724', backgroundColor: '#d4edda', padding: '2px 4px', borderRadius: '3px', marginLeft: '4px' }}> *F 고정공동</span> |
+                <span style={{ color: '#856404', backgroundColor: '#fff3cd', padding: '2px 4px', borderRadius: '3px', marginLeft: '4px' }}> F 고정</span> | 
                 <span style={{ color: '#666' }}> 교사명(주간시수/실제시수)</span>
               </div>
               <div style={{ overflowX: 'auto', marginTop: '15px' }}>
@@ -654,9 +679,16 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                                       else if (subject === '진로와직업') subjectDisplay = '진직';
                                       else if (subject === '정보') subjectDisplay = '소프트';
                                       
-                                      const isCoTeaching = subject.includes('(공동)');
-                                      if (isCoTeaching) {
+                                      const isCoTeaching = subject.includes('(공동)') || subject.includes('(고정공동)');
+                                      const isFixedCoTeaching = subject.includes('(고정공동)');
+                                      const isFixed = subject.includes('(고정)');
+                                      
+                                      if (isFixedCoTeaching) {
+                                        return `${classCode} ${subjectDisplay.replace(' (고정공동)', '')}*F`;
+                                      } else if (isCoTeaching) {
                                         return `${classCode} ${subjectDisplay.replace(' (공동)', '')}*`;
+                                      } else if (isFixed) {
+                                        return `${classCode} ${subjectDisplay.replace(' (고정)', '')}F`;
                                       } else {
                                         return `${classCode} ${subjectDisplay}`;
                                       }
@@ -665,9 +697,13 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                                   return classInfo;
                                 }).join(', ');
                                 
-                                // 공동수업인 경우 배경색 변경
-                                if (entry.includes('(공동)')) {
-                                  bgColor = '#e3f2fd';
+                                // 수업 유형에 따른 배경색 설정
+                                if (entry.includes('(고정공동)')) {
+                                  bgColor = '#d4edda'; // 고정 공동수업은 녹색
+                                } else if (entry.includes('(공동)')) {
+                                  bgColor = '#e3f2fd'; // 일반 공동수업은 파란색
+                                } else if (entry.includes('(고정)')) {
+                                  bgColor = '#fff3cd'; // 고정 수업은 노란색
                                 }
                               }
                               

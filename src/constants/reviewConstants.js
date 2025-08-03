@@ -24,6 +24,7 @@ export const DEFAULT_VALUES = {
   DEFAULT_CLASSES_PER_GRADE: [4, 4, 4],
   DEFAULT_PERIODS_PER_DAY: { '월': 7, '화': 7, '수': 7, '목': 7, '금': 7 },
   WEEKLY_HOURS: 25,
+  HOURS_TOLERANCE: 1,
   SUBJECT_WEEKLY_HOURS: {
     '국어': 5, '수학': 5, '과학': 4, '영어': 4,
     '역사': 3, '사회': 3, '체육': 3,

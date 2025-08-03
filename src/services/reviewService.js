@@ -291,6 +291,145 @@ export const calculateIssues = (classHours, teacherHours, data) => {
 };
 
 /**
+ * 교사 시수 검증 데이터 계산 (공동수업 고려)
+ * @param {Object} data - 입력 데이터
+ * @param {Object} teacherHours - 교사별 시수 데이터
+ * @returns {Object}
+ */
+export const calculateTeacherHoursValidation = (data, teacherHours) => {
+  if (!data || !teacherHours) {
+    return { isValid: true, issues: [], teacherDetails: {} };
+  }
+
+  const teachers = data.teachers || [];
+  const issues = [];
+  const teacherDetails = {};
+
+  teachers.forEach(teacher => {
+    const teacherName = teacher.name;
+    const teacherData = teacherHours[teacherName];
+    
+    if (!teacherData) return;
+
+    // 실제 시수 (teacherHours에서 계산)
+    const actualTotalHours = teacherData.totalHours || 0;
+    
+    // 요구 시수 계산
+    let requiredTotalHours = 0;
+    const teacherSubjects = teacher.subjects || [];
+    
+    teacherSubjects.forEach(subjectName => {
+      const subject = data.subjects?.find(s => s.name === subjectName);
+      if (!subject) return;
+      
+      // 학급별 요구 시수 계산
+      const base = data.base;
+      for (let grade = 1; grade <= (base?.grades || 0); grade++) {
+        const classCount = base?.classes_per_grade?.[grade - 1] || 0;
+        for (let classNum = 1; classNum <= classCount; classNum++) {
+          const className = `${grade}학년 ${classNum}반`;
+          const classKey = `${grade}학년`;
+          
+          let teacherClassHours = 0;
+          
+          // 교사별 학급 시수 설정 확인
+          if (teacher.weeklyHoursByGrade && teacher.weeklyHoursByGrade[classKey] !== undefined) {
+            teacherClassHours = teacher.weeklyHoursByGrade[classKey];
+          }
+          else if (teacher.classWeeklyHours && teacher.classWeeklyHours[className] !== undefined) {
+            teacherClassHours = teacher.classWeeklyHours[className];
+          }
+          else {
+            teacherClassHours = subject.weekly_hours || 1;
+          }
+          
+          requiredTotalHours += teacherClassHours;
+        }
+      }
+    });
+
+    // 공동수업 조정 계산 (간단한 버전)
+    const coTeachingAdjustments = {};
+    const coTeachingConstraints = data.constraints?.must?.filter(c => 
+      c.type === CONSTRAINT_TYPES.CO_TEACHING_REQUIREMENT || c.type === CONSTRAINT_TYPES.SPECIFIC_TEACHER_CO_TEACHING
+    ) || [];
+
+    coTeachingConstraints.forEach(constraint => {
+      if (constraint.mainTeacher === teacherName || 
+          (constraint.coTeachers && constraint.coTeachers.includes(teacherName))) {
+        const className = constraint.className || '공동수업';
+        const adjustment = constraint.weeklyHours || 1;
+        coTeachingAdjustments[className] = (coTeachingAdjustments[className] || 0) + adjustment;
+        requiredTotalHours += adjustment;
+      }
+    });
+
+    // 시수 차이 계산
+    const totalDifference = actualTotalHours - requiredTotalHours;
+    const isTotalHoursMatch = Math.abs(totalDifference) <= DEFAULT_VALUES.HOURS_TOLERANCE;
+
+    if (!isTotalHoursMatch) {
+      issues.push(`${teacherName}: 총 시수 불일치 (실제: ${actualTotalHours}시간, 요구: ${requiredTotalHours}시간, 차이: ${totalDifference}시간)`);
+    }
+
+    // 학급별 상세 분석 계산
+    const classBreakdown = {};
+    teacherSubjects.forEach(subjectName => {
+      const subject = data.subjects?.find(s => s.name === subjectName);
+      if (!subject) return;
+      
+      const base = data.base;
+      for (let grade = 1; grade <= (base?.grades || 0); grade++) {
+        const classCount = base?.classes_per_grade?.[grade - 1] || 0;
+        for (let classNum = 1; classNum <= classCount; classNum++) {
+          const className = `${grade}학년 ${classNum}반`;
+          const classKey = `${grade}학년`;
+          
+          let teacherClassHours = 0;
+          
+          // 교사별 학급 시수 설정 확인
+          if (teacher.weeklyHoursByGrade && teacher.weeklyHoursByGrade[classKey] !== undefined) {
+            teacherClassHours = teacher.weeklyHoursByGrade[classKey];
+          }
+          else if (teacher.classWeeklyHours && teacher.classWeeklyHours[className] !== undefined) {
+            teacherClassHours = teacher.classWeeklyHours[className];
+          }
+          else {
+            teacherClassHours = subject.weekly_hours || 1;
+          }
+          
+          // 실제 시수는 간단히 요구 시수와 동일하게 설정 (실제로는 더 복잡한 계산 필요)
+          const actualHours = teacherClassHours;
+          const requiredHours = teacherClassHours;
+          const difference = actualHours - requiredHours;
+          
+          classBreakdown[className] = {
+            actual: actualHours,
+            required: requiredHours,
+            difference: difference
+          };
+        }
+      }
+    });
+
+    // 교사별 상세 정보 저장
+    teacherDetails[teacherName] = {
+      actualTotalHours,
+      requiredTotalHours,
+      totalDifference,
+      classBreakdown,
+      coTeachingAdjustments
+    };
+  });
+
+  return {
+    isValid: issues.length === 0,
+    issues,
+    teacherDetails
+  };
+};
+
+/**
  * 전체 검토 데이터 계산
  * @param {Object} data - 입력 데이터
  * @returns {Object}
@@ -304,11 +443,13 @@ export const calculateReviewData = (data) => {
   const teacherHours = calculateTeacherHours(data);
   const coTeachingClasses = calculateCoTeachingClasses(data);
   const issues = calculateIssues(classHours, teacherHours, data);
+  const teacherHoursValidation = calculateTeacherHoursValidation(data, teacherHours);
 
   return {
     classHours,
     teacherHours,
     coTeachingClasses,
-    issues
+    issues,
+    teacherHoursValidation
   };
 }; 

@@ -6,7 +6,7 @@ import TeacherSettings from './components/TeacherSettings';
 import ConstraintSettings from './components/ConstraintSettings';
 import FixedClassSettings from './components/FixedClassSettings';
 import FinalReview from './components/review/FinalReview';
-import TimetableGeneration from './components/TimetableGeneration';
+import TimetableGeneration from './components/TimetableGenerationUI.tsx';
 import ReviewAndExport from './components/ReviewAndExport';
 
 const STEPS = [
@@ -42,6 +42,7 @@ function App() {
       optional: []
     },
     fixedClasses: [],
+    classWeeklyHours: {},
     schedule: {},
     metadata: {
       created_at: new Date().toISOString(),
@@ -126,6 +127,8 @@ function App() {
         must: [],
         optional: []
       },
+      fixedClasses: [],
+      classWeeklyHours: {},
       schedule: {},
       metadata: {
         created_at: new Date().toISOString(),
@@ -150,6 +153,7 @@ function App() {
           teachers: parsedData.teachers || [],
           constraints: parsedData.constraints || { must: [], optional: [] },
           fixedClasses: parsedData.fixedClasses || [],
+          classWeeklyHours: parsedData.classWeeklyHours || {},
           schedule: {},
           metadata: {
             created_at: new Date().toISOString(),
