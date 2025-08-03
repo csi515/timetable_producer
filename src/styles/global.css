@@ -1,0 +1,201 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 사용자 정의 컴포넌트 클래스 */
+@layer components {
+  .container {
+    @apply max-w-7xl mx-auto px-6 py-6;
+  }
+
+  .header {
+    @apply bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 text-white py-8 text-center mb-8 shadow-lg;
+  }
+
+  .header h1 {
+    @apply text-4xl font-bold mb-3;
+  }
+
+  .step-indicator {
+    @apply flex flex-wrap justify-center gap-4 mb-8;
+  }
+
+  .step {
+    @apply flex items-center px-6 py-3 rounded-2xl font-semibold transition-all duration-300 cursor-pointer shadow-md;
+  }
+
+  .step.active {
+    @apply bg-blue-500 text-white shadow-lg;
+  }
+
+  .step.completed {
+    @apply bg-emerald-500 text-white shadow-lg;
+  }
+
+  .step.inactive {
+    @apply bg-white text-gray-600 cursor-default shadow-sm border border-gray-200;
+  }
+
+  .card {
+    @apply bg-white rounded-2xl p-6 shadow-lg mb-6 border border-gray-100;
+  }
+
+  .card h2 {
+    @apply text-gray-800 mb-6 text-3xl font-bold;
+  }
+
+  .card h3 {
+    @apply text-gray-700 mb-4 text-xl font-semibold;
+  }
+
+  .form-group {
+    @apply mb-5;
+  }
+
+  .form-group label {
+    @apply block mb-2 font-medium text-gray-700;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    @apply w-full px-4 py-3 border-2 border-gray-200 rounded-xl text-base transition-colors duration-300 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200;
+  }
+
+  .btn {
+    @apply px-6 py-3 border-none rounded-xl text-base font-semibold cursor-pointer transition-all duration-300 m-1 shadow-md hover:shadow-lg;
+  }
+
+  .btn-primary {
+    @apply bg-blue-500 text-white hover:bg-blue-600 hover:-translate-y-1;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-500 text-white hover:bg-gray-600;
+  }
+
+  .btn-success {
+    @apply bg-emerald-500 text-white hover:bg-emerald-600;
+  }
+
+  .btn-danger {
+    @apply bg-red-500 text-white hover:bg-red-600;
+  }
+
+  .table {
+    @apply w-full border-collapse mt-5;
+  }
+
+  .table th,
+  .table td {
+    @apply px-4 py-3 text-left border-b border-gray-200 max-w-xs truncate;
+  }
+
+  .table th {
+    @apply bg-gray-50 font-semibold text-gray-700;
+  }
+
+  .table tr:hover {
+    @apply bg-gray-50;
+  }
+
+  .navigation {
+    @apply flex justify-between mt-8 pt-6 border-t border-gray-200;
+  }
+
+  .alert {
+    @apply px-6 py-4 rounded-2xl mb-6 shadow-md;
+  }
+
+  .alert-success {
+    @apply bg-emerald-50 border border-emerald-200 text-emerald-800;
+  }
+
+  .alert-warning {
+    @apply bg-amber-50 border border-amber-200 text-amber-800;
+  }
+
+  .alert-error {
+    @apply bg-red-50 border border-red-200 text-red-800;
+  }
+
+  /* PC 최적화 레이아웃 클래스들 */
+  .desktop-layout {
+    @apply flex flex-col lg:flex-row gap-6 min-h-screen;
+  }
+
+  .main-content {
+    @apply flex-1 overflow-auto;
+  }
+
+  .sidebar {
+    @apply w-full lg:w-80 bg-white rounded-2xl shadow-lg p-6 h-fit border border-gray-100;
+  }
+
+  .content-grid {
+    @apply grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6;
+  }
+
+  .wide-content-grid {
+    @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6;
+  }
+
+  .form-row {
+    @apply flex flex-col sm:flex-row gap-4 items-end;
+  }
+
+  .form-col {
+    @apply flex-1 min-w-0;
+  }
+
+  .stats-grid {
+    @apply grid grid-cols-2 lg:grid-cols-4 gap-4;
+  }
+
+  .stat-card {
+    @apply bg-gradient-to-br from-blue-50 to-indigo-100 p-6 rounded-2xl text-center shadow-md border border-blue-100;
+  }
+
+  .stat-number {
+    @apply text-3xl font-bold text-indigo-600 mb-2;
+  }
+
+  .stat-label {
+    @apply text-gray-700 font-medium;
+  }
+
+  .feature-card {
+    @apply bg-white p-6 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow duration-300;
+  }
+
+  .section-card {
+    @apply bg-gray-50 p-6 rounded-2xl border border-gray-200;
+  }
+
+  /* 반응형 처리 */
+  @media (max-width: 1024px) {
+    .desktop-layout {
+      @apply flex-col;
+    }
+    
+    .sidebar {
+      @apply w-full;
+    }
+    
+    .content-grid {
+      @apply grid-cols-1 md:grid-cols-2;
+    }
+    
+    .wide-content-grid {
+      @apply grid-cols-1 md:grid-cols-2;
+    }
+    
+    .form-row {
+      @apply flex-col gap-3;
+    }
+    
+    .stats-grid {
+      @apply grid-cols-2;
+    }
+  }
+} 

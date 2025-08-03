@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>제약조건 디버깅 - 시간표 생성 시스템</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        
+        .table th,
+        .table td {
+            border: 1px solid #e5e7eb;
+            padding: 8px;
+            font-size: 12px;
+        }
+        
+        .table th {
+            background-color: #f9fafb;
+            font-weight: 600;
+        }
+        
+        .bg-red-50 { background-color: #fef2f2; }
+        .bg-yellow-50 { background-color: #fffbeb; }
+        .bg-green-50 { background-color: #f0fdf4; }
+        .bg-blue-50 { background-color: #eff6ff; }
+        .bg-gray-50 { background-color: #f9fafb; }
+        .bg-gray-100 { background-color: #f3f4f6; }
+        
+        .text-red-600 { color: #dc2626; }
+        .text-yellow-600 { color: #d97706; }
+        .text-green-600 { color: #16a34a; }
+        .text-blue-600 { color: #2563eb; }
+        .text-gray-600 { color: #4b5563; }
+        
+        .font-semibold { font-weight: 600; }
+        .font-medium { font-weight: 500; }
+        
+        .text-lg { font-size: 1.125rem; }
+        .text-sm { font-size: 0.875rem; }
+        .text-xs { font-size: 0.75rem; }
+        
+        .mb-4 { margin-bottom: 1rem; }
+        .mb-2 { margin-bottom: 0.5rem; }
+        .mr-2 { margin-right: 0.5rem; }
+        .ml-2 { margin-left: 0.5rem; }
+        .mt-4 { margin-top: 1rem; }
+        .p-3 { padding: 0.75rem; }
+        
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .grid { display: grid; }
+        .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+        .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .gap-2 { gap: 0.5rem; }
+        .gap-4 { gap: 1rem; }
+        
+        .overflow-x-auto { overflow-x: auto; }
+        .rounded-lg { border-radius: 0.5rem; }
+        
+        .hover\:bg-gray-50:hover { background-color: #f9fafb; }
+        
+        .btn {
+            padding: 8px 16px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .btn-primary {
+            background-color: #2563eb;
+            color: white;
+        }
+        
+        .btn-danger {
+            background-color: #dc2626;
+            color: white;
+        }
+        
+        .btn-warning {
+            background-color: #d97706;
+            color: white;
+        }
+        
+        .btn-success {
+            background-color: #16a34a;
+            color: white;
+        }
+        
+        .log-item {
+            padding: 4px 8px;
+            margin: 2px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .log-info { background-color: #dbeafe; color: #1e40af; }
+        .log-success { background-color: #dcfce7; color: #166534; }
+        .log-warning { background-color: #fef3c7; color: #92400e; }
+        .log-error { background-color: #fee2e2; color: #991b1b; }
+        
+        @media (min-width: 768px) {
+            .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // 제약조건 디버깅 컴포넌트
+        const ConstraintDebugger = () => {
+            const [logs, setLogs] = React.useState([]);
+            const [schedule, setSchedule] = React.useState({});
+            const [isGenerating, setIsGenerating] = React.useState(false);
+            const [constraintIssues, setConstraintIssues] = React.useState([]);
+
+            // 테스트 데이터
+            const testData = {
+                base: {
+                    grades: 3,
+                    classes_per_grade: [2, 2, 2],
+                    periods_per_day: { '월': 7, '화': 7, '수': 7, '목': 7, '금': 7 }
+                },
+                teachers: [
+                    { name: "김교사", subjects: ["국어", "수학"], weeklyHours: 25 },
+                    { name: "이교사", subjects: ["영어", "과학"], weeklyHours: 22 },
+                    { name: "박교사", subjects: ["체육", "음악"], weeklyHours: 24 },
+                    { name: "최교사", subjects: ["미술", "기술가정"], weeklyHours: 23 }
+                ],
+                subjects: [
+                    { name: "국어", weekly_hours: 5 },
+                    { name: "수학", weekly_hours: 5 },
+                    { name: "영어", weekly_hours: 4 },
+                    { name: "과학", weekly_hours: 4 },
+                    { name: "체육", weekly_hours: 3 },
+                    { name: "음악", weekly_hours: 2 },
+                    { name: "미술", weekly_hours: 2 },
+                    { name: "기술가정", weekly_hours: 2 }
+                ],
+                constraints: {
+                    must: [
+                        {
+                            type: "teacher_same_class_daily_limit",
+                            description: "교사는 한 학급에 하루에 한 번만 수업"
+                        },
+                        {
+                            type: "no_duplicate_teachers",
+                            description: "같은 시간에 한 교사가 여러 학급에서 수업 불가"
+                        },
+                        {
+                            type: "co_teaching_requirement",
+                            mainTeacher: "김교사",
+                            coTeachers: ["이교사"],
+                            subject: "공동수업",
+                            className: "1학년 1반",
+                            maxTeachersPerClass: 2
+                        }
+                    ],
+                    optional: [
+                        {
+                            type: "class_daily_subject_once",
+                            subject: "체육",
+                            description: "체육은 하루에 한 번만"
+                        }
+                    ]
+                }
+            };
+
+            const addLog = (message, type = 'info') => {
+                const timestamp = new Date().toLocaleTimeString();
+                setLogs(prev => [...prev, { 
+                    message: `[${timestamp}] ${message}`, 
+                    type,
+                    id: Date.now() + Math.random()
+                }]);
+            };
+
+            // 제약조건 검증 함수들
+            const validateTeacherSameClassDailyLimit = (schedule) => {
+                const issues = [];
+                const days = ['월', '화', '수', '목', '금'];
+                
+                Object.keys(schedule).forEach(className => {
+                    days.forEach(day => {
+                        if (schedule[className] && schedule[className][day]) {
+                            const teacherCount = {};
+                            
+                            schedule[className][day].forEach((slot, periodIndex) => {
+                                if (slot) {
+                                    let teachers = [];
+                                    if (typeof slot === 'object' && slot.teachers) {
+                                        teachers = slot.teachers;
+                                    } else if (typeof slot === 'string' && slot.trim() !== '') {
+                                        teachers = [slot.trim()];
+                                    }
+                                    
+                                    teachers.forEach(teacher => {
+                                        if (!teacherCount[teacher]) {
+                                            teacherCount[teacher] = [];
+                                        }
+                                        teacherCount[teacher].push(periodIndex + 1);
+                                    });
+                                }
+                            });
+                            
+                            Object.keys(teacherCount).forEach(teacher => {
+                                if (teacherCount[teacher].length > 1) {
+                                    issues.push({
+                                        type: 'teacher_same_class_daily_limit',
+                                        severity: 'error',
+                                        message: `${teacher} 교사가 ${className} ${day}요일에 ${teacherCount[teacher].length}번 수업 (${teacherCount[teacher].join(', ')}교시)`,
+                                        className,
+                                        day,
+                                        teacher,
+                                        periods: teacherCount[teacher]
+                                    });
+                                }
+                            });
+                        }
+                    });
+                });
+                
+                return issues;
+            };
+
+            const validateNoDuplicateTeachers = (schedule) => {
+                const issues = [];
+                const days = ['월', '화', '수', '목', '금'];
+                
+                days.forEach(day => {
+                    const teacherPeriods = {};
+                    
+                    Object.keys(schedule).forEach(className => {
+                        if (schedule[className] && schedule[className][day]) {
+                            schedule[className][day].forEach((slot, periodIndex) => {
+                                if (slot) {
+                                    let teachers = [];
+                                    if (typeof slot === 'object' && slot.teachers) {
+                                        teachers = slot.teachers;
+                                    } else if (typeof slot === 'string' && slot.trim() !== '') {
+                                        teachers = [slot.trim()];
+                                    }
+                                    
+                                    teachers.forEach(teacher => {
+                                        if (!teacherPeriods[teacher]) {
+                                            teacherPeriods[teacher] = {};
+                                        }
+                                        if (!teacherPeriods[teacher][periodIndex + 1]) {
+                                            teacherPeriods[teacher][periodIndex + 1] = [];
+                                        }
+                                        teacherPeriods[teacher][periodIndex + 1].push(className);
+                                    });
+                                }
+                            });
+                        }
+                    });
+                    
+                    Object.keys(teacherPeriods).forEach(teacher => {
+                        Object.keys(teacherPeriods[teacher]).forEach(period => {
+                            const classes = teacherPeriods[teacher][period];
+                            if (classes.length > 1) {
+                                issues.push({
+                                    type: 'no_duplicate_teachers',
+                                    severity: 'error',
+                                    message: `${teacher} 교사가 ${day}요일 ${period}교시에 ${classes.length}개 학급에서 동시 수업 (${classes.join(', ')})`,
+                                    day,
+                                    period: parseInt(period),
+                                    teacher,
+                                    classes
+                                });
+                            }
+                        });
+                    });
+                });
+                
+                return issues;
+            };
+
+            const validateCoTeachingRequirements = (schedule) => {
+                const issues = [];
+                const coTeachingConstraints = testData.constraints.must.filter(c => 
+                    c.type === 'co_teaching_requirement'
+                );
+                
+                coTeachingConstraints.forEach(constraint => {
+                    const { mainTeacher, coTeachers, className, subject } = constraint;
+                    let coTeachingCount = 0;
+                    
+                    if (schedule[className]) {
+                        const days = ['월', '화', '수', '목', '금'];
+                        days.forEach(day => {
+                            if (schedule[className][day]) {
+                                schedule[className][day].forEach((slot, periodIndex) => {
+                                    if (slot && typeof slot === 'object' && slot.teachers) {
+                                        if (slot.teachers.includes(mainTeacher) && 
+                                            coTeachers.some(ct => slot.teachers.includes(ct))) {
+                                            coTeachingCount++;
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                    }
+                    
+                    if (coTeachingCount === 0) {
+                        issues.push({
+                            type: 'co_teaching_requirement',
+                            severity: 'warning',
+                            message: `${className}에 ${mainTeacher}과 ${coTeachers.join(', ')}의 공동수업이 없습니다`,
+                            className,
+                            mainTeacher,
+                            coTeachers
+                        });
+                    }
+                });
+                
+                return issues;
+            };
+
+            const validateSubjectWeeklyHours = (schedule) => {
+                const issues = [];
+                const days = ['월', '화', '수', '목', '금'];
+                
+                testData.subjects.forEach(subject => {
+                    Object.keys(schedule).forEach(className => {
+                        let actualHours = 0;
+                        
+                        days.forEach(day => {
+                            if (schedule[className] && schedule[className][day]) {
+                                schedule[className][day].forEach(slot => {
+                                    if (slot) {
+                                        let slotSubject = '';
+                                        if (typeof slot === 'object' && slot.subject) {
+                                            slotSubject = slot.subject;
+                                        } else if (typeof slot === 'string' && slot.trim() !== '') {
+                                            slotSubject = slot.trim();
+                                        }
+                                        
+                                        if (slotSubject === subject.name) {
+                                            actualHours++;
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                        
+                        const targetHours = subject.weekly_hours;
+                        if (actualHours !== targetHours) {
+                            issues.push({
+                                type: 'subject_weekly_hours',
+                                severity: actualHours < targetHours ? 'warning' : 'error',
+                                message: `${className} ${subject.name}: 목표 ${targetHours}시간, 실제 ${actualHours}시간`,
+                                className,
+                                subject: subject.name,
+                                target: targetHours,
+                                actual: actualHours
+                            });
+                        }
+                    });
+                });
+                
+                return issues;
+            };
+
+            // 시간표 생성 시뮬레이션
+            const generateTimetableWithConstraints = async () => {
+                setIsGenerating(true);
+                setLogs([]);
+                setConstraintIssues([]);
+                
+                addLog('제약조건 디버깅을 위한 시간표 생성을 시작합니다...', 'info');
+                
+                // 기본 시간표 구조 생성
+                const newSchedule = {};
+                const classNames = [];
+                const { grades, classes_per_grade } = testData.base;
+                
+                for (let grade = 1; grade <= grades; grade++) {
+                    const classesInGrade = classes_per_grade[grade - 1] || 0;
+                    for (let classNum = 1; classNum <= classesInGrade; classNum++) {
+                        const className = `${grade}학년 ${classNum}반`;
+                        classNames.push(className);
+                        newSchedule[className] = {};
+                        ['월', '화', '수', '목', '금'].forEach(day => {
+                            newSchedule[className][day] = new Array(7).fill('');
+                        });
+                    }
+                }
+                
+                addLog(`${classNames.length}개 학급의 시간표 구조를 생성했습니다.`, 'success');
+                
+                // 간단한 시간표 생성 (제약조건 위반 포함)
+                let placedCount = 0;
+                
+                // 의도적으로 제약조건을 위반하는 시간표 생성
+                classNames.forEach(className => {
+                    ['월', '화', '수', '목', '금'].forEach(day => {
+                        for (let period = 1; period <= 7; period++) {
+                            if (Math.random() > 0.3) { // 70% 확률로 수업 배치
+                                const teacher = testData.teachers[Math.floor(Math.random() * testData.teachers.length)];
+                                const subject = teacher.subjects[Math.floor(Math.random() * teacher.subjects.length)];
+                                
+                                newSchedule[className][day][period - 1] = {
+                                    subject: subject,
+                                    teachers: [teacher.name],
+                                    isCoTeaching: false,
+                                    isFixed: false
+                                };
+                                placedCount++;
+                            }
+                        }
+                    });
+                });
+                
+                addLog(`${placedCount}개의 수업을 배치했습니다.`, 'success');
+                
+                // 제약조건 검증
+                addLog('제약조건을 검증합니다...', 'info');
+                
+                const allIssues = [
+                    ...validateTeacherSameClassDailyLimit(newSchedule),
+                    ...validateNoDuplicateTeachers(newSchedule),
+                    ...validateCoTeachingRequirements(newSchedule),
+                    ...validateSubjectWeeklyHours(newSchedule)
+                ];
+                
+                setConstraintIssues(allIssues);
+                
+                allIssues.forEach(issue => {
+                    addLog(issue.message, issue.severity);
+                });
+                
+                addLog(`제약조건 검증 완료: ${allIssues.length}개 문제 발견`, 'info');
+                
+                setSchedule(newSchedule);
+                setIsGenerating(false);
+            };
+
+            const clearLogs = () => {
+                setLogs([]);
+                setConstraintIssues([]);
+            };
+
+            const getSeverityColor = (severity) => {
+                switch (severity) {
+                    case 'error': return 'text-red-600';
+                    case 'warning': return 'text-yellow-600';
+                    case 'success': return 'text-green-600';
+                    default: return 'text-blue-600';
+                }
+            };
+
+            const getSeverityBg = (severity) => {
+                switch (severity) {
+                    case 'error': return 'bg-red-50';
+                    case 'warning': return 'bg-yellow-50';
+                    case 'success': return 'bg-green-50';
+                    default: return 'bg-blue-50';
+                }
+            };
+
+            return (
+                <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+                    <h1 style={{ textAlign: 'center', marginBottom: '30px', color: '#1f2937' }}>
+                        🔍 제약조건 디버깅 - 시간표 생성 시스템
+                    </h1>
+                    
+                    {/* 제어 패널 */}
+                    <div className="card">
+                        <h3 className="text-lg font-semibold mb-4">🎮 제어 패널</h3>
+                        <div className="flex gap-4 mb-4">
+                            <button 
+                                className="btn btn-primary"
+                                onClick={generateTimetableWithConstraints}
+                                disabled={isGenerating}
+                            >
+                                {isGenerating ? '생성 중...' : '시간표 생성 및 제약조건 검증'}
+                            </button>
+                            <button 
+                                className="btn btn-danger"
+                                onClick={clearLogs}
+                            >
+                                로그 초기화
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* 제약조건 문제점 요약 */}
+                    {constraintIssues.length > 0 && (
+                        <div className="card">
+                            <h3 className="text-lg font-semibold mb-4">⚠️ 제약조건 문제점 요약</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="text-center p-4 bg-red-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-red-600">
+                                        {constraintIssues.filter(i => i.severity === 'error').length}
+                                    </div>
+                                    <div className="text-sm text-red-600">심각한 오류</div>
+                                </div>
+                                <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-yellow-600">
+                                        {constraintIssues.filter(i => i.severity === 'warning').length}
+                                    </div>
+                                    <div className="text-sm text-yellow-600">경고</div>
+                                </div>
+                                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-blue-600">
+                                        {constraintIssues.filter(i => i.type === 'teacher_same_class_daily_limit').length}
+                                    </div>
+                                    <div className="text-sm text-blue-600">교사 중복</div>
+                                </div>
+                                <div className="text-center p-4 bg-green-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-green-600">
+                                        {constraintIssues.filter(i => i.type === 'subject_weekly_hours').length}
+                                    </div>
+                                    <div className="text-sm text-green-600">시수 불일치</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 제약조건 문제점 상세 */}
+                    {constraintIssues.length > 0 && (
+                        <div className="card">
+                            <h3 className="text-lg font-semibold mb-4">📋 제약조건 문제점 상세</h3>
+                            <div className="overflow-x-auto">
+                                <table className="table">
+                                    <thead>
+                                        <tr>
+                                            <th>유형</th>
+                                            <th>심각도</th>
+                                            <th>문제 내용</th>
+                                            <th>상세 정보</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {constraintIssues.map((issue, index) => (
+                                            <tr key={index} className={`hover:bg-gray-50 ${getSeverityBg(issue.severity)}`}>
+                                                <td className="font-medium">{issue.type}</td>
+                                                <td>
+                                                    <span className={`font-semibold ${getSeverityColor(issue.severity)}`}>
+                                                        {issue.severity === 'error' ? '❌ 오류' : '⚠️ 경고'}
+                                                    </span>
+                                                </td>
+                                                <td>{issue.message}</td>
+                                                <td className="text-xs">
+                                                    {issue.className && `학급: ${issue.className}`}
+                                                    {issue.day && ` 요일: ${issue.day}`}
+                                                    {issue.period && ` 교시: ${issue.period}`}
+                                                    {issue.teacher && ` 교사: ${issue.teacher}`}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 생성된 시간표 미리보기 */}
+                    {Object.keys(schedule).length > 0 && (
+                        <div className="card">
+                            <h3 className="text-lg font-semibold mb-4">📅 생성된 시간표 미리보기</h3>
+                            <div className="overflow-x-auto">
+                                <table className="table">
+                                    <thead>
+                                        <tr>
+                                            <th>학급</th>
+                                            <th>요일</th>
+                                            <th>1교시</th>
+                                            <th>2교시</th>
+                                            <th>3교시</th>
+                                            <th>4교시</th>
+                                            <th>5교시</th>
+                                            <th>6교시</th>
+                                            <th>7교시</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {Object.keys(schedule).map(className => 
+                                            ['월', '화', '수', '목', '금'].map(day => (
+                                                <tr key={`${className}-${day}`}>
+                                                    <td className="font-medium">{className}</td>
+                                                    <td className="font-medium">{day}</td>
+                                                    {schedule[className][day].map((slot, index) => (
+                                                        <td key={index} className="text-xs">
+                                                            {slot ? (
+                                                                typeof slot === 'object' ? 
+                                                                    `${slot.subject} (${slot.teachers.join(', ')})` : 
+                                                                    slot
+                                                            ) : '-'}
+                                                        </td>
+                                                    ))}
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 로그 출력 */}
+                    <div className="card">
+                        <h3 className="text-lg font-semibold mb-4">📝 실행 로그</h3>
+                        <div style={{ maxHeight: '400px', overflowY: 'auto', backgroundColor: '#f8f9fa', padding: '10px', borderRadius: '4px' }}>
+                            {logs.length === 0 ? (
+                                <p className="text-gray-500">로그가 없습니다. 시간표 생성을 실행해보세요.</p>
+                            ) : (
+                                logs.map((log, index) => (
+                                    <div key={log.id} className={`log-item log-${log.type}`}>
+                                        {log.message}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    {/* 제약조건 개선 제안 */}
+                    <div className="card">
+                        <h3 className="text-lg font-semibold mb-4">💡 제약조건 개선 제안</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="p-4 bg-blue-50 rounded-lg">
+                                <h4 className="font-semibold text-blue-600 mb-2">🔧 기술적 개선사항</h4>
+                                <ul className="text-sm space-y-1">
+                                    <li>• 제약조건 검증 로직 강화</li>
+                                    <li>• 실시간 제약조건 위반 감지</li>
+                                    <li>• 제약조건 우선순위 시스템 도입</li>
+                                    <li>• 자동 제약조건 위반 수정 기능</li>
+                                </ul>
+                            </div>
+                            <div className="p-4 bg-green-50 rounded-lg">
+                                <h4 className="font-semibold text-green-600 mb-2">📊 알고리즘 개선사항</h4>
+                                <ul className="text-sm space-y-1">
+                                    <li>• 제약조건 기반 백트래킹 알고리즘</li>
+                                    <li>• 제약조건 충돌 해결 메커니즘</li>
+                                    <li>• 제약조건 만족도 최적화</li>
+                                    <li>• 제약조건 위반 시 자동 재배치</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // React 앱 렌더링
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ConstraintDebugger />);
+    </script>
+</body>
+</html> 
