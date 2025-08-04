@@ -1,4 +1,4 @@
-import { Schedule, Teacher, Subject, ValidationResult, TeacherHoursTracker } from '../types';
+import { Schedule, Teacher, Subject, ValidationResult, TeacherHoursTracker, TimetableData } from '../types';
 
 export const DAYS = ['월', '화', '수', '목', '금'];
 

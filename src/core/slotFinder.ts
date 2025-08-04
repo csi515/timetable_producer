@@ -5,7 +5,8 @@ import {
   checkTeacherClassHoursLimit, 
   checkClassWeeklyHoursLimit, 
   checkClassDailyHoursLimit,
-  checkTeacherTimeConflict
+  checkTeacherTimeConflict,
+  checkBlockPeriodRequirement
 } from './constraints';
 
 // 사용 가능한 슬롯 찾기 함수
@@ -152,6 +153,16 @@ export const findAvailableSlots = (
         }
       }
       
+      // 블록제 교사 제약조건 확인 (블록제 교사인 경우에만)
+      const blockPeriodConstraints = data.constraints?.must?.filter(c => c.type === 'block_period_requirement') || [];
+      const isBlockPeriodTeacher = blockPeriodConstraints.some(c => c.subject === teacher.name);
+      if (isBlockPeriodTeacher) {
+        const blockCheck = checkBlockPeriodRequirement(schedule, className, day, period, teacher.name, data, subjectName);
+        if (!blockCheck.allowed) {
+          continue; // 블록제 교사 제약조건 위반
+        }
+      }
+      
       // 공동수업 제약조건 확인 (완전 제외하지 않고 우선순위만 낮춤)
       const coTeachingConstraints = (data.constraints?.must || []).filter(c =>
         c.type === 'specific_teacher_co_teaching' && c.mainTeacher === teacher.name
@@ -192,7 +203,7 @@ const sortSlotsByPreference = (
     }
     
     // 3. 요일별 선호도 (월-금 순서)
-    const dayOrder = { '월': 1, '화': 2, '수': 3, '목': 4, '금': 5 };
+    const dayOrder: Record<string, number> = { '월': 1, '화': 2, '수': 3, '목': 4, '금': 5 };
     const aDayScore = dayOrder[a.day] || 6;
     const bDayScore = dayOrder[b.day] || 6;
     

@@ -17,7 +17,11 @@ export const useTimetableGeneration = (data: TimetableData, updateData: (key: st
 
   // 로그 추가 함수
   const addLog = (message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
-    const logEntry = createLogMessage(message, type);
+    const logEntry: GenerationLog = {
+      message,
+      type,
+      timestamp: new Date()
+    };
     setGenerationLog(prev => [...prev, logEntry]);
   };
 
@@ -33,7 +37,7 @@ export const useTimetableGeneration = (data: TimetableData, updateData: (key: st
     setGenerationProgress(0);
 
     try {
-      const result = await generateTimetable(data, addLog, setGenerationProgress);
+      const result = await generateTimetable(data, addLog as (message: string, type?: string) => void, setGenerationProgress);
       
       setGenerationResults({
         schedule: result.schedule,
@@ -71,7 +75,7 @@ export const useTimetableGeneration = (data: TimetableData, updateData: (key: st
       const result = await autoGenerateTimetable(
         data,
         config,
-        addLog,
+        addLog as (message: string, type?: string) => void,
         setGenerationProgress,
         (attempt, fillRate) => {
           setAutoGenerationCount(attempt);
@@ -92,9 +96,9 @@ export const useTimetableGeneration = (data: TimetableData, updateData: (key: st
         updateData('schedule', result.schedule);
         updateData('teacherHours', result.teacherHours);
         
-        addLog(`✅ 자동 생성 완료! 최고 채움률: ${result.fillRate}%`, 'success');
+        addLog(`✅ 자동 생성 완료! 최고 채움률: ${result.bestFillRate}%`, 'success');
       } else {
-        addLog(`⚠️ 자동 생성이 중단되었습니다. 최고 채움률: ${result.fillRate}%`, 'warning');
+        addLog(`⚠️ 자동 생성이 중단되었습니다. 최고 채움률: ${result.bestFillRate}%`, 'warning');
       }
     } catch (error) {
       addLog(`❌ 자동 생성 중 오류가 발생했습니다: ${error}`, 'error');
@@ -132,7 +136,7 @@ export const useTimetableGeneration = (data: TimetableData, updateData: (key: st
       
       // 응급모드 채우기 로직 실행
       const { emergencyFillAllSlots } = await import('../core/emergencyMode');
-      const emergencyFilledSlots = await emergencyFillAllSlots(currentSchedule, data, currentTeacherHours, addLog);
+      const emergencyFilledSlots = await emergencyFillAllSlots(currentSchedule, data, currentTeacherHours, addLog as (message: string, type?: string) => void);
       
       setGenerationProgress(70);
       
@@ -155,7 +159,7 @@ export const useTimetableGeneration = (data: TimetableData, updateData: (key: st
       setGenerationProgress(100);
       
       addLog(`🎉 응급모드 완료! ${emergencyFilledSlots}개 슬롯 추가 배치`, 'success');
-      addLog(`📊 채움률: ${stats.fillRate?.toFixed(1)}%`, 'success');
+      addLog(`📊 채움률: ${parseFloat(stats.fillRate).toFixed(1)}%`, 'success');
       
     } catch (error) {
       addLog(`❌ 응급모드 실행 중 오류가 발생했습니다: ${error}`, 'error');

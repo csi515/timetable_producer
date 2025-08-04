@@ -29,7 +29,7 @@ export const calculateScheduleStats = (
             
             // 교사별 시수 계산
             if ('teachers' in slot) {
-              slot.teachers.forEach(teacherName => {
+              slot.teachers.forEach((teacherName: string) => {
                 teacherHoursStats[teacherName] = (teacherHoursStats[teacherName] || 0) + 1;
               });
             }

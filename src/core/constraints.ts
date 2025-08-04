@@ -333,7 +333,7 @@ export const validateCoTeachingConstraints = (
                   // 공동수업인지 확인
                   if (slot.isCoTeaching && slot.teachers.length > 1) {
                     // 부교사들이 제대로 포함되어 있는지 확인
-                    const includedCoTeachers = slot.teachers.filter(t => coTeachers.includes(t));
+                    const includedCoTeachers = slot.teachers.filter((t: string) => coTeachers.includes(t));
                     if (includedCoTeachers.length > 0) {
                       coTeachingFound = true;
                       addLog(`✅ 공동수업 검증 성공: ${className} ${day} ${targetSubject} (${slot.teachers.join(', ')})`, 'success');
@@ -430,3 +430,249 @@ export const validateScheduleTeacherConflicts = (
     return true;
   }
 }; 
+
+// 블록제 수업 제약조건 확인 (강화된 검증 - 같은 반 2시간 연속 보장)
+export const checkBlockPeriodRequirement = (
+  schedule: Schedule,
+  className: string,
+  day: string,
+  period: number,
+  teacherName: string,
+  data: TimetableData,
+  subjectName?: string // 특정 과목명을 받을 수 있도록 추가
+): ValidationResult => {
+  // 블록제 교사인지 확인 (제약조건에서 해당 교사가 블록제로 설정되어 있는지 확인)
+  const blockPeriodConstraints = data.constraints?.must?.filter(c => c.type === 'block_period_requirement') || [];
+  const isBlockPeriodTeacher = blockPeriodConstraints.some(c => c.subject === teacherName);
+  
+  if (!isBlockPeriodTeacher) {
+    return { allowed: true }; // 해당 교사가 블록제 교사가 아님
+  }
+
+  // 블록제 교사인 경우, 같은 반에서 연속된 두 교시가 필요
+
+  // 블록제 수업인 경우, 같은 반에서 연속된 두 교시가 필요
+  const slotIndex = period - 1;
+  const nextSlotIndex = period; // 다음 교시
+  
+  // 현재 교시가 홀수 교시인지 확인 (1, 3, 5, 7교시)
+  const isOddPeriod = period % 2 === 1;
+  
+  if (!isOddPeriod) {
+    return {
+      allowed: false,
+      reason: 'block_period_even',
+      message: `${teacherName} 교사의 블록제 수업이므로 홀수 교시(1, 3, 5, 7교시)에만 배치할 수 있습니다.`
+    };
+  }
+
+  // 다음 교시가 존재하는지 확인
+  const maxPeriods = data.base?.periods_per_day?.[day] || 7;
+  if (nextSlotIndex >= maxPeriods) {
+    return {
+      allowed: false,
+      reason: 'block_period_no_next',
+      message: `${teacherName} 교사의 블록제 수업이므로 마지막 교시에는 배치할 수 없습니다.`
+    };
+  }
+
+  // 현재 교시와 다음 교시가 모두 비어있는지 확인 (같은 반에서만)
+  const currentSlot = schedule[className]?.[day]?.[slotIndex];
+  const nextSlot = schedule[className]?.[day]?.[nextSlotIndex];
+  
+  if (currentSlot && typeof currentSlot === 'object' && currentSlot.subject) {
+    return {
+      allowed: false,
+      reason: 'block_period_current_occupied',
+      message: `${teacherName} 교사의 블록제 수업을 위해 ${className}의 현재 교시(${period}교시)가 비어있어야 합니다.`
+    };
+  }
+  
+  if (nextSlot && typeof nextSlot === 'object' && nextSlot.subject) {
+    return {
+      allowed: false,
+      reason: 'block_period_next_occupied',
+      message: `${teacherName} 교사의 블록제 수업이므로 ${className}의 다음 교시(${period + 1}교시)가 비어있어야 합니다.`
+    };
+  }
+
+  // 교사가 다음 교시에 다른 학급에서 수업하는지 확인 (같은 반에서만 배치 보장)
+  const teacherConflictNext = checkTeacherTimeConflict(schedule, teacherName, day, period + 1, className);
+  if (!teacherConflictNext.allowed) {
+    return {
+      allowed: false,
+      reason: 'block_period_teacher_conflict',
+      message: `${teacherName} 교사가 다음 교시(${period + 1}교시)에 다른 학급에서 수업 중이므로 ${className}에서 블록제 수업을 배치할 수 없습니다.`
+    };
+  }
+
+  return { allowed: true };
+};
+
+// 블록제 수업 배치 시 다음 교시도 자동 배치 (강화된 검증)
+export const placeBlockPeriodSubject = (
+  schedule: Schedule,
+  className: string,
+  day: string,
+  period: number,
+  teacherName: string,
+  teacher: Teacher,
+  data: TimetableData,
+  subjectName?: string // 특정 과목명을 받을 수 있도록 추가
+): boolean => {
+  const slotIndex = period - 1;
+  const nextSlotIndex = period; // 다음 교시
+
+  // 블록제 교사인지 확인 (제약조건에서 해당 교사가 블록제로 설정되어 있는지 확인)
+  const blockPeriodConstraints = data.constraints?.must?.filter(c => c.type === 'block_period_requirement') || [];
+  const isBlockPeriodTeacher = blockPeriodConstraints.some(c => c.subject === teacherName);
+  
+  if (!isBlockPeriodTeacher) {
+    return false; // 해당 교사가 블록제 교사가 아님
+  }
+
+  // 교사가 해당 과목을 가르칠 수 있는지 확인
+  if (!teacher.subjects.includes(subjectName)) {
+    return false;
+  }
+
+  // 현재 교시와 다음 교시가 모두 비어있는지 엄격히 확인
+  const currentSlot = schedule[className]?.[day]?.[slotIndex];
+  const nextSlot = schedule[className]?.[day]?.[nextSlotIndex];
+  
+  if (currentSlot && typeof currentSlot === 'object' && currentSlot.subject) {
+    return false; // 현재 교시가 이미 사용 중
+  }
+  
+  if (nextSlot && typeof nextSlot === 'object' && nextSlot.subject) {
+    return false; // 다음 교시가 이미 사용 중
+  }
+
+  // 교사 시간 중복 확인 (다음 교시)
+  const teacherConflictNext = checkTeacherTimeConflict(schedule, teacherName, day, period + 1, className);
+  if (!teacherConflictNext.allowed) {
+    return false; // 교사가 다음 교시에 다른 학급에서 수업 중
+  }
+
+  // 현재 교시 배치
+  schedule[className][day][slotIndex] = {
+    subject: subjectName,
+    teachers: [teacher.name],
+    isCoTeaching: false,
+    isFixed: false,
+    isBlockPeriod: true,
+    blockPartner: nextSlotIndex
+  };
+
+  // 다음 교시도 자동 배치
+  schedule[className][day][nextSlotIndex] = {
+    subject: subjectName,
+    teachers: [teacher.name],
+    isCoTeaching: false,
+    isFixed: false,
+    isBlockPeriod: true,
+    blockPartner: slotIndex
+  };
+
+  return true;
+};
+
+// 블록제 수업 제약조건 전체 검증 (같은 반 2시간 연속 보장)
+export const validateBlockPeriodConstraints = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): boolean => {
+  let allValid = true;
+  
+  // 블록제 교사들 찾기 (제약조건에서)
+  const blockPeriodConstraints = data.constraints?.must?.filter(c => c.type === 'block_period_requirement') || [];
+  const blockPeriodTeachers = blockPeriodConstraints.map(c => c.subject);
+  
+  if (blockPeriodTeachers.length === 0) {
+    return true; // 블록제 제약조건이 없음
+  }
+
+  // 각 블록제 교사에 대해 검증
+  blockPeriodTeachers.forEach(teacherName => {
+    let subjectFound = false;
+    let blockViolations = 0;
+
+    Object.keys(schedule).forEach(className => {
+      DAYS.forEach(day => {
+        const maxPeriods = data.base?.periods_per_day?.[day] || 7;
+        
+        for (let period = 1; period < maxPeriods; period++) {
+          const slotIndex = period - 1;
+          const slot = schedule[className]?.[day]?.[slotIndex];
+          
+          if (slot && typeof slot === 'object' && slot.teachers && slot.teachers.includes(teacherName)) {
+            subjectFound = true;
+            
+            // 블록제 수업인지 확인
+            if (slot.isBlockPeriod) {
+              // 다음 교시도 같은 반, 같은 교사인지 확인
+              const nextSlotIndex = period;
+              const nextSlot = schedule[className]?.[day]?.[nextSlotIndex];
+              
+              if (!nextSlot || typeof nextSlot !== 'object' || !nextSlot.teachers || !nextSlot.teachers.includes(teacherName)) {
+                blockViolations++;
+                addLog(`❌ 블록제 수업 위반: ${className} ${day} ${period}교시 ${teacherName} 교사의 다음 교시가 같은 반에서 연결되지 않았습니다.`, 'error');
+                allValid = false;
+              } else {
+                // 다음 교시도 블록제 수업으로 표시되어 있는지 확인
+                if (!nextSlot.isBlockPeriod) {
+                  blockViolations++;
+                  addLog(`❌ 블록제 수업 위반: ${className} ${day} ${period + 1}교시 ${teacherName} 교사가 블록제로 표시되지 않았습니다.`, 'error');
+                  allValid = false;
+                }
+                
+                // 과목도 같은지 확인 (같은 반에서 같은 과목)
+                if (nextSlot.subject !== slot.subject) {
+                  blockViolations++;
+                  addLog(`❌ 블록제 수업 위반: ${className} ${day} ${period}-${period + 1}교시 ${teacherName} 교사의 과목이 일치하지 않습니다.`, 'error');
+                  allValid = false;
+                }
+                
+                // blockPartner 정보 확인 (같은 반 내에서만)
+                if (slot.blockPartner !== nextSlotIndex || nextSlot.blockPartner !== slotIndex) {
+                  blockViolations++;
+                  addLog(`❌ 블록제 수업 위반: ${className} ${day} ${period}-${period + 1}교시 ${teacherName} 교사의 블록 파트너 정보가 올바르지 않습니다.`, 'error');
+                  allValid = false;
+                }
+                
+                // 다른 반에 같은 교사가 블록제 수업을 하고 있는지 확인
+                Object.keys(schedule).forEach(otherClassName => {
+                  if (otherClassName !== className) {
+                    const otherSlot = schedule[otherClassName]?.[day]?.[slotIndex];
+                    const otherNextSlot = schedule[otherClassName]?.[day]?.[nextSlotIndex];
+                    
+                    if (otherSlot && typeof otherSlot === 'object' && 
+                        otherSlot.isBlockPeriod && otherSlot.teachers && otherSlot.teachers.includes(teacherName)) {
+                      blockViolations++;
+                      addLog(`❌ 블록제 수업 위반: ${className}과 ${otherClassName}에서 ${teacherName} 교사가 동시에 블록제 수업을 하고 있습니다.`, 'error');
+                      allValid = false;
+                    }
+                  }
+                });
+              }
+            } else {
+              // 블록제 수업이 아닌데 블록제 교사가 배치됨
+              blockViolations++;
+              addLog(`❌ 블록제 수업 위반: ${className} ${day} ${period}교시 ${teacherName} 교사가 블록제로 배치되지 않았습니다.`, 'error');
+              allValid = false;
+            }
+          }
+        }
+      });
+    });
+
+    if (!subjectFound) {
+      addLog(`⚠️ 블록제 교사 ${teacherName}이 스케줄에 배치되지 않았습니다.`, 'warning');
+    } else if (blockViolations === 0) {
+      addLog(`✅ 블록제 교사 ${teacherName} 제약조건 검증 통과 (같은 반 2시간 연속)`, 'success');
+    }
+  });
+
+  return allValid;
+};

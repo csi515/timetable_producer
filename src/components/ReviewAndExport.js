@@ -63,6 +63,13 @@ function ReviewAndExport({ data, updateData, prevStep }) {
     return null;
   };
 
+  // 블록제 교사인지 확인하는 함수
+  const isBlockPeriodTeacher = (teacherName) => {
+    // 제약조건에서 해당 교사가 블록제로 설정되어 있는지 확인
+    const blockPeriodConstraints = data.constraints?.must?.filter(c => c.type === 'block_period_requirement') || [];
+    return blockPeriodConstraints.some(c => c.subject === teacherName);
+  };
+
   // 과목별 현재 시수 계산 (헬퍼 함수)
   const getCurrentSubjectHours = (schedule, className, subjectName) => {
     let hours = 0;
@@ -153,6 +160,8 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                 
                 // 고정 수업 여부 확인
                 const isFixed = scheduleItem && typeof scheduleItem === 'object' && scheduleItem.isFixed;
+                // 블록제 수업 여부 확인
+                const isBlockPeriod = scheduleItem && typeof scheduleItem === 'object' && scheduleItem.isBlockPeriod;
                 
                 // 수업 유형에 따른 접미사 설정
                 let suffix = '';
@@ -162,6 +171,8 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                   suffix = ' (공동)';
                 } else if (isFixed) {
                   suffix = ' (고정)';
+                } else if (isBlockPeriod) {
+                  suffix = ' (블록)';
                 }
                 
                 const newEntry = `${subject}${suffix} (${className})`;
@@ -483,6 +494,9 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                               const convertedItem = convertScheduleItem(scheduleItem, selectedClass, day, period);
                               
                               if (convertedItem) {
+                                // 블록제 수업 여부 확인
+                                const isBlockPeriod = convertedItem.isBlockPeriod || false;
+                                
                                 if (convertedItem.isCoTeaching) {
                                   // 공동수업인 경우 모든 교사 표시
                                   const teachers = convertedItem.teachers || [];
@@ -505,11 +519,18 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                                     displayText = convertedItem.subject;
                                     titleText = convertedItem.subject;
                                   }
-                                  bgColor = convertedItem.isFixed ? '#fff3cd' : '#e8f5e8'; // 고정 수업은 노란색 배경
+                                  
+                                  // 블록제 수업인 경우 특별한 색상 적용
+                                  if (isBlockPeriod) {
+                                    bgColor = '#ffebee'; // 연한 빨간색 배경
+                                    displayText += ' (블록)';
+                                  } else {
+                                    bgColor = convertedItem.isFixed ? '#fff3cd' : '#e8f5e8'; // 고정 수업은 노란색 배경
+                                  }
                                 }
                                 
                                 // 고정 수업 표시
-                                if (convertedItem.isFixed && !convertedItem.isCoTeaching) {
+                                if (convertedItem.isFixed && !convertedItem.isCoTeaching && !isBlockPeriod) {
                                   displayText += ' (고정)';
                                 }
                               } else {
@@ -550,7 +571,8 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                 <strong>표시 형식:</strong> 학급코드 과목명 (예: 101 국어) | 
                 <span style={{ color: '#1976d2', backgroundColor: '#e3f2fd', padding: '2px 4px', borderRadius: '3px' }}> * 공동수업</span> |
                 <span style={{ color: '#155724', backgroundColor: '#d4edda', padding: '2px 4px', borderRadius: '3px', marginLeft: '4px' }}> *F 고정공동</span> |
-                <span style={{ color: '#856404', backgroundColor: '#fff3cd', padding: '2px 4px', borderRadius: '3px', marginLeft: '4px' }}> F 고정</span> | 
+                <span style={{ color: '#856404', backgroundColor: '#fff3cd', padding: '2px 4px', borderRadius: '3px', marginLeft: '4px' }}> F 고정</span> |
+                <span style={{ color: '#d32f2f', backgroundColor: '#ffebee', padding: '2px 4px', borderRadius: '3px', marginLeft: '4px' }}> B 블록제</span> | 
                 <span style={{ color: '#666' }}> 교사명(주간시수/실제시수)</span>
               </div>
               <div style={{ overflowX: 'auto', marginTop: '15px' }}>
@@ -623,6 +645,7 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                     {data.teachers.map(teacher => {
                       const teacherSchedule = getTeacherSchedule(teacher.name);
                       const teacherHours = teacher.weeklyHours || teacher.maxHours || 0;
+                      const isBlockTeacher = isBlockPeriodTeacher(teacher.name);
                       
                       // 교사별 실제 배정된 시수 계산 (개선된 버전)
                       let actualHours = 0;
@@ -646,11 +669,13 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                             textAlign: 'center',
                             position: 'sticky',
                             left: 0,
-                            backgroundColor: '#fff',
+                            backgroundColor: isBlockTeacher ? '#ffebee' : '#fff',
                             fontSize: '11px',
-                            fontWeight: 'bold'
+                            fontWeight: 'bold',
+                            color: isBlockTeacher ? '#d32f2f' : '#333'
                           }}>
                             {teacher.name}({teacherHours.toString().padStart(2, '0')}/{actualHours.toString().padStart(2, '0')})
+                            {isBlockTeacher && ' (블록제)'}
                           </td>
                           {days.map(day => {
                             const periods = data.base?.periods_per_day?.[day] || 7;
@@ -682,6 +707,7 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                                       const isCoTeaching = subject.includes('(공동)') || subject.includes('(고정공동)');
                                       const isFixedCoTeaching = subject.includes('(고정공동)');
                                       const isFixed = subject.includes('(고정)');
+                                      const isBlockPeriod = subject.includes('(블록)');
                                       
                                       if (isFixedCoTeaching) {
                                         return `${classCode} ${subjectDisplay.replace(' (고정공동)', '')}*F`;
@@ -689,6 +715,8 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                                         return `${classCode} ${subjectDisplay.replace(' (공동)', '')}*`;
                                       } else if (isFixed) {
                                         return `${classCode} ${subjectDisplay.replace(' (고정)', '')}F`;
+                                      } else if (isBlockPeriod) {
+                                        return `${classCode} ${subjectDisplay.replace(' (블록)', '')}B`;
                                       } else {
                                         return `${classCode} ${subjectDisplay}`;
                                       }
@@ -704,6 +732,8 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                                   bgColor = '#e3f2fd'; // 일반 공동수업은 파란색
                                 } else if (entry.includes('(고정)')) {
                                   bgColor = '#fff3cd'; // 고정 수업은 노란색
+                                } else if (entry.includes('(블록)')) {
+                                  bgColor = '#ffebee'; // 블록제 수업은 연한 빨간색
                                 }
                               }
                               

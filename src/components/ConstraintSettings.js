@@ -74,7 +74,7 @@ function SortableConstraintItem({ constraint, index, priority, onRemove, getCons
           </h4>
           {constraint.subject && (
             <p className="text-ellipsis">
-              <strong>과목:</strong> <span title={constraint.subject === 'all' ? '모든 수업에 해당' : constraint.subject}>
+              <strong>{constraint.type === 'block_period_requirement' ? '교사' : '과목'}:</strong> <span title={constraint.subject === 'all' ? '모든 수업에 해당' : constraint.subject}>
                 {constraint.subject === 'all' ? '모든 수업에 해당' : constraint.subject}
               </span>
             </p>
@@ -395,6 +395,14 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
       description: '한 교사에게 4교시 수업이 과도하게 집중되지 않도록 분산 배정',
       hasSubject: false,
       hasTime: false
+    },
+    // 🎯 블록제 수업 제약조건
+    {
+      id: 'block_period_requirement',
+      name: '블록제 수업',
+      description: '특정 수업은 연속된 두 교시에 배치되어야 함 (예: 실험, 체육, 프로젝트 등)',
+      hasSubject: true,
+      hasTime: false
     }
   ];
 
@@ -426,6 +434,14 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
     if (newConstraint.type === 'subject_fixed_only') {
       if (!newConstraint.subjects || newConstraint.subjects.length === 0) {
         alert('고정수업 전용으로 설정할 과목을 최소 1개 이상 선택해주세요.');
+        return;
+      }
+    }
+
+    // 블록제 수업 제약조건 검증
+    if (newConstraint.type === 'block_period_requirement') {
+      if (!newConstraint.subject) {
+        alert('블록제 수업을 담당할 교사를 선택해주세요.');
         return;
       }
     }
@@ -632,7 +648,7 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
         </div>
 
         {/* 조건별 추가 설정 */}
-        {getCurrentConstraintType()?.hasSubject && (
+        {getCurrentConstraintType()?.hasSubject && newConstraint.type !== 'block_period_requirement' && (
           <div className="form-group">
             <label>대상 과목</label>
             <select
@@ -644,6 +660,24 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
               {data.subjects.map((subject, index) => (
                 <option key={index} value={subject.name}>
                   {subject.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* 블록제 수업 제약조건 - 교사 선택 */}
+        {newConstraint.type === 'block_period_requirement' && (
+          <div className="form-group">
+            <label>대상 교사</label>
+            <select
+              value={newConstraint.subject}
+              onChange={(e) => setNewConstraint({ ...newConstraint, subject: e.target.value })}
+            >
+              <option value="">교사 선택</option>
+              {data.teachers.map((teacher, index) => (
+                <option key={index} value={teacher.name}>
+                  {teacher.name} ({teacher.subjects.join(', ')})
                 </option>
               ))}
             </select>

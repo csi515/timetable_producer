@@ -12,6 +12,7 @@ export interface Subject {
   is_space_limited?: boolean;
   max_classes_at_once?: number;
   requires_co_teaching?: boolean;
+  block?: boolean; // 블록제 수업 여부 (2시간 연속 수업)
 }
 
 export interface Teacher {
@@ -21,6 +22,7 @@ export interface Teacher {
   allow_parallel: boolean;
   co_teaching_with: string;
   maxHours: number;
+  max_hours_per_week?: number; // 주간 최대 수업 시수 제한
   weeklyHoursByGrade: Record<string, number>;
   classWeeklyHours: Record<string, number>;
   subjectHours: Record<string, number>;
@@ -48,6 +50,7 @@ export interface FixedClass {
   subject: string;
   teacher: string;
   coTeachers: string[];
+  className?: string; // 학급명 (선택적)
   originalData?: any;
 }
 
@@ -81,6 +84,9 @@ export interface ScheduleSlot {
   constraintType?: string;
   mainTeacher?: string;
   coTeachers?: string[];
+  isBlockPeriod?: boolean; // 블록제 수업 여부
+  blockPartner?: number; // 블록제 수업의 짝이 되는 교시 인덱스
+  priority?: number; // 우선순위 (재조정 시 사용)
 }
 
 export interface DaySchedule {
@@ -99,10 +105,13 @@ export interface Schedule {
 export interface ValidationResult {
   allowed: boolean;
   reason?: string;
+  message?: string;
   current?: number;
   max?: number;
   day?: string;
   period?: number;
+  conflictClass?: string; // 충돌하는 학급명
+  conflictSubject?: string; // 충돌하는 과목명
 }
 
 // 교사 시수 추적 타입

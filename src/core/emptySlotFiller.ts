@@ -1,4 +1,4 @@
-import { Schedule, TimetableData, TeacherHoursTracker, Teacher } from '../types';
+import { Schedule, TimetableData, TeacherHoursTracker, Teacher, Subject } from '../types';
 import { DAYS, getDefaultWeeklyHours, getCurrentSubjectHours } from '../utils/helpers';
 import { checkTeacherUnavailable, validateSlotPlacement, checkSubjectFixedOnly, checkTeacherTimeConflict } from './constraints';
 import { findAvailableTeachersForSubject } from './teacherAssignment';
@@ -50,7 +50,11 @@ export const fillEmptySlots = (
             }
 
             if (availableSubjects.length > 0) {
-              const subjectTeacherPairs = [];
+              const subjectTeacherPairs: Array<{
+                subject: Subject;
+                teacher: Teacher;
+                priority: number;
+              }> = [];
 
               availableSubjects.forEach(subject => {
                 const availableTeachers = findAvailableTeachersForSubject(teachers, subject.name, className, schedule, data);

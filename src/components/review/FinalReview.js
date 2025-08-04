@@ -4,9 +4,7 @@ import StatCard from '../common/StatCard';
 import ClassHoursTable from '../tables/ClassHoursTable';
 import TeacherHoursTable from '../tables/TeacherHoursTable';
 import CoTeachingTable from '../tables/CoTeachingTable';
-import IssuesTable from '../tables/IssuesTable';
 import WeeklyHoursComparisonTable from '../tables/WeeklyHoursComparisonTable';
-import TeacherHoursValidationTable from '../tables/TeacherHoursValidationTable';
 
 /**
  * 최종 검토 컴포넌트
@@ -19,11 +17,9 @@ import TeacherHoursValidationTable from '../tables/TeacherHoursValidationTable';
 const FinalReview = ({ data, updateData, nextStep, prevStep }) => {
   const {
     reviewData,
-    hasIssues,
     totalClasses,
     totalTeachers,
-    totalCoTeachingClasses,
-    totalIssues
+    totalCoTeachingClasses
   } = useReviewData(data);
 
   return (
@@ -55,23 +51,12 @@ const FinalReview = ({ data, updateData, nextStep, prevStep }) => {
             value={totalCoTeachingClasses} 
             label="공동 수업" 
           />
-          <StatCard 
-            icon="⚠️" 
-            value={totalIssues} 
-            label="검토 필요" 
-          />
         </div>
 
         {/* 주간 시수 비교 분석 */}
         <WeeklyHoursComparisonTable 
           teacherHours={reviewData.teacherHours}
           coTeachingClasses={reviewData.coTeachingClasses}
-          data={data}
-        />
-
-        {/* 교사 시수 일치 검증 (공동수업 고려) */}
-        <TeacherHoursValidationTable 
-          validationResult={reviewData.teacherHoursValidation}
           data={data}
         />
 
@@ -87,9 +72,6 @@ const FinalReview = ({ data, updateData, nextStep, prevStep }) => {
         {/* 공동 수업 목록 */}
         <CoTeachingTable coTeachingClasses={reviewData.coTeachingClasses} />
 
-        {/* 문제점 목록 */}
-        <IssuesTable issues={reviewData.issues} />
-
         {/* 네비게이션 */}
         <div className="navigation">
           <button className="btn btn-secondary" onClick={prevStep}>
@@ -99,12 +81,6 @@ const FinalReview = ({ data, updateData, nextStep, prevStep }) => {
             다음 단계 →
           </button>
         </div>
-        
-        {hasIssues && (
-          <p className="text-yellow-600 text-sm mt-2 text-center">
-            * 검토 필요 항목이 있습니다. 문제를 해결한 후 다음 단계로 진행하세요.
-          </p>
-        )}
       </div>
     </div>
   );
