@@ -257,6 +257,29 @@ export interface PerformanceMetrics {
   memoryUsage?: number;
 }
 
+// 연속 수업 제한 관련 타입
+export interface ConsecutiveTeachingConstraint {
+  teacherId: string;
+  maxConsecutiveHours: number; // 최대 연속 수업 시간 (기본값: 2)
+  penaltyWeight: number; // 위반 시 페널티 가중치 (기본값: 10)
+}
+
+// 시간표 품질 평가 결과
+export interface TimetableQualityScore {
+  totalScore: number;
+  consecutiveTeachingScore: number;
+  consecutiveTeachingViolations: Array<{
+    teacherId: string;
+    day: string;
+    consecutiveHours: number;
+    maxAllowed: number;
+    penalty: number;
+  }>;
+  otherScores: {
+    [key: string]: number;
+  };
+}
+
 // 실패 분석 결과
 export interface FailureAnalysis {
   totalAttempts: number;
@@ -265,6 +288,7 @@ export interface FailureAnalysis {
   backtrackCount: number;
   constraintViolations: ConstraintViolation[];
   performanceMetrics: PerformanceMetrics;
+  qualityScore?: TimetableQualityScore;
   topFailureReasons?: Array<{
     subjectId: string;
     classId: string;

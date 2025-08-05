@@ -3,12 +3,14 @@ import * as XLSX from 'xlsx';
 import TeacherTimetable from './TeacherTimetable';
 import ClassTimetable from './ClassTimetable';
 import FailureAnalysis from './FailureAnalysis';
+import TimetableQualityAnalysis from './TimetableQualityAnalysis';
 
 function ReviewAndExportNew({ data, updateData, prevStep }) {
   const [viewMode, setViewMode] = useState('teacher'); // 'class' or 'teacher'
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedTeacher, setSelectedTeacher] = useState('');
   const [showFailureAnalysis, setShowFailureAnalysis] = useState(false);
+  const [showQualityAnalysis, setShowQualityAnalysis] = useState(false);
 
   const days = ['월', '화', '수', '목', '금'];
 
@@ -435,6 +437,42 @@ function ReviewAndExportNew({ data, updateData, prevStep }) {
                   <div className="bg-yellow-50 p-4 rounded-lg">
                     <div className="text-2xl font-bold text-yellow-600">{data.failureAnalysis.backtrackCount}</div>
                     <div className="text-sm text-yellow-700">백트래킹 횟수</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 품질 분석 섹션 */}
+        {data.failureAnalysis?.qualityScore && (
+          <div className="mb-6">
+            <div className="bg-white border border-gray-200 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">🎯 품질 분석</h3>
+                <button
+                  onClick={() => setShowQualityAnalysis(!showQualityAnalysis)}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
+                >
+                  {showQualityAnalysis ? '숨기기' : '자세히 보기'}
+                </button>
+              </div>
+              
+              {showQualityAnalysis ? (
+                <TimetableQualityAnalysis qualityScore={data.failureAnalysis.qualityScore} data={data} />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">{data.failureAnalysis.qualityScore.totalScore}/100</div>
+                    <div className="text-sm text-purple-700">전체 품질 점수</div>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">{data.failureAnalysis.qualityScore.consecutiveTeachingViolations.length}</div>
+                    <div className="text-sm text-purple-700">연속 수업 위반</div>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">-{data.failureAnalysis.qualityScore.consecutiveTeachingScore}점</div>
+                    <div className="text-sm text-purple-700">연속 수업 페널티</div>
                   </div>
                 </div>
               )}

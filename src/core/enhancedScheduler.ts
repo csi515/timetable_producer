@@ -10,10 +10,13 @@ import {
   Teacher,
   Class,
   CandidateSlot,
-  FailureAnalysis
+  FailureAnalysis,
+  ConsecutiveTeachingConstraint,
+  TimetableQualityScore
 } from '../types';
 import { DAYS } from '../utils/helpers';
 import { ConstraintCheckerImpl } from './constraintChecker';
+import { ConsecutiveTeachingValidator } from '../utils/consecutiveTeachingValidator';
 
 // 개선된 우선순위 기반 배치 알고리즘
 export class EnhancedScheduler {
@@ -22,11 +25,13 @@ export class EnhancedScheduler {
   private teacherHours: TeacherHoursTracker;
   private data: TimetableData;
   private constraintChecker: ConstraintCheckerImpl;
+  private consecutiveTeachingValidator: ConsecutiveTeachingValidator;
   private placementHistory: PlacementHistory[];
   private maxBacktrackSteps: number;
   private currentBacktrackSteps: number;
   private candidateSlotsCache: Map<string, CandidateSlot[]>;
   private failureAnalysis: FailureAnalysis;
+  private consecutiveTeachingConstraints: ConsecutiveTeachingConstraint[];
 
   constructor(data: TimetableData, maxBacktrackSteps: number = 2000) {
     this.data = data;
@@ -34,6 +39,7 @@ export class EnhancedScheduler {
     this.currentBacktrackSteps = 0;
     this.placementHistory = [];
     this.candidateSlotsCache = new Map();
+    this.consecutiveTeachingConstraints = this.initializeConsecutiveTeachingConstraints();
     this.failureAnalysis = {
       totalAttempts: 0,
       successfulPlacements: 0,
@@ -54,6 +60,11 @@ export class EnhancedScheduler {
       this.teacherSchedule,
       this.teacherHours,
       this.data
+    );
+    this.consecutiveTeachingValidator = new ConsecutiveTeachingValidator(
+      this.schedule,
+      this.teacherSchedule,
+      this.consecutiveTeachingConstraints
     );
   }
 
@@ -97,6 +108,15 @@ export class EnhancedScheduler {
         }
       });
     });
+  }
+
+  // 연속 수업 제한 초기화
+  private initializeConsecutiveTeachingConstraints(): ConsecutiveTeachingConstraint[] {
+    return this.data.teachers.map(teacher => ({
+      teacherId: teacher.id,
+      maxConsecutiveHours: 2, // 기본값: 2시간
+      penaltyWeight: 10 // 기본 페널티 가중치
+    }));
   }
 
   // 향상된 배치 우선순위 계산
@@ -284,6 +304,17 @@ export class EnhancedScheduler {
       }
     });
 
+    // 6. 연속 수업 제한 반영
+    for (const teacher of requiredTeachers) {
+      const adjustedScore = this.consecutiveTeachingValidator.adjustSlotScoreForConsecutiveTeaching(
+        score,
+        teacher.id,
+        day,
+        period
+      );
+      score = Math.min(score, adjustedScore); // 가장 낮은 점수로 조정
+    }
+
     return score;
   }
 
@@ -401,9 +432,30 @@ export class EnhancedScheduler {
           ? this.failureAnalysis.performanceMetrics.totalPlacementTime / this.failureAnalysis.totalAttempts 
           : 0;
 
+      // 3. 시간표 품질 점수 계산
       if (success) {
+        this.consecutiveTeachingValidator = new ConsecutiveTeachingValidator(
+          this.schedule,
+          this.teacherSchedule,
+          this.consecutiveTeachingConstraints
+        );
+        const qualityScore = this.consecutiveTeachingValidator.calculateQualityScore();
+        this.failureAnalysis.qualityScore = qualityScore;
+        
         addLog('✅ 시간표 생성이 완료되었습니다.', 'success');
         addLog(`📊 성능 메트릭: 총 ${this.failureAnalysis.totalAttempts}회 시도, ${this.failureAnalysis.successfulPlacements}회 성공, ${this.failureAnalysis.backtrackCount}회 백트래킹`, 'info');
+        addLog(`🎯 시간표 품질 점수: ${qualityScore.totalScore}/100`, 'info');
+        
+        // 연속 수업 위반 정보 출력
+        if (qualityScore.consecutiveTeachingViolations.length > 0) {
+          addLog(`⚠️ 연속 수업 위반: ${qualityScore.consecutiveTeachingViolations.length}건 발견`, 'warning');
+          qualityScore.consecutiveTeachingViolations.forEach((violation, index) => {
+            const teacher = this.data.teachers.find(t => t.id === violation.teacherId);
+            addLog(`  ${index + 1}. ${teacher?.name || violation.teacherId} - ${violation.day}요일 ${violation.consecutiveHours}시간 연속 (최대 ${violation.maxAllowed}시간)`, 'warning');
+          });
+        } else {
+          addLog('✅ 연속 수업 제한 준수 완료', 'success');
+        }
         
         return {
           success: true,
