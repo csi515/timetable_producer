@@ -291,8 +291,44 @@ export const validateSlotPlacement = (
     }
   }
   
+  // 7. 블록제 수업 제약조건 확인
+  const blockPeriodConstraints = data.constraints?.must?.filter(c => c.type === 'block_period_requirement') || [];
+  const isBlockPeriodTeacher = blockPeriodConstraints.some(c => c.subject === teacher.name);
+  
+  if (isBlockPeriodTeacher) {
+    const blockCheck = checkBlockPeriodRequirement(schedule, className, day, period, teacher.name, data, subject);
+    if (!blockCheck.allowed) {
+      addLog(`❌ 슬롯 검증 실패: ${blockCheck.message}`, 'error');
+      return false;
+    }
+  }
+  
+  // 8. 특별실 제약조건 확인
+  const subjectData = data.subjects?.find(s => s.name === subject);
+  if (subjectData?.is_space_limited) {
+    // 같은 시간에 다른 학급에서 특별실을 사용하는 과목이 있는지 확인
+    let specialRoomConflict = false;
+    for (const otherClassName of Object.keys(schedule)) {
+      if (otherClassName !== className && schedule[otherClassName] && schedule[otherClassName][day]) {
+        const otherSlot = schedule[otherClassName][day][slotIndex];
+        if (otherSlot && typeof otherSlot === 'object' && 'subject' in otherSlot) {
+          const otherSubject = data.subjects?.find(s => s.name === otherSlot.subject);
+          if (otherSubject?.is_space_limited) {
+            specialRoomConflict = true;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (specialRoomConflict) {
+      addLog(`❌ 슬롯 검증 실패: ${className} ${day}요일 ${period}교시에 특별실을 사용하는 다른 과목이 이미 배치되어 있습니다.`, 'error');
+      return false;
+    }
+  }
+  
   return true;
-}; 
+};
 
 // 공동수업 제약조건 검증
 export const validateCoTeachingConstraints = (

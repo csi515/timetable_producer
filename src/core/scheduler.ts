@@ -40,7 +40,8 @@ const calculatePlacementPriority = (
   className: string,
   subjectName: string,
   availableTeachers: any[],
-  data: TimetableData
+  data: TimetableData,
+  schedule: Schedule
 ): number => {
   let priority = 0;
   
@@ -70,6 +71,28 @@ const calculatePlacementPriority = (
   // 5. 주간 시수가 많은 과목 우선순위 증가
   const weeklyHours = subject?.weekly_hours || 1;
   priority += weeklyHours * 2;
+  
+  // 6. 교사별 학급 담당 우선순위
+  const primaryTeachers = availableTeachers.filter(teacher => {
+    const classKey = convertClassNameToKey(className);
+    return (teacher.classWeeklyHours && teacher.classWeeklyHours[className] > 0) ||
+           (teacher.weeklyHoursByGrade && teacher.weeklyHoursByGrade[classKey] > 0);
+  });
+  
+  if (primaryTeachers.length > 0) {
+    priority += 50; // 담당 학급이 있는 교사 우선
+  }
+  
+  // 7. 교사 시수 부족도 우선순위
+  const teachersWithLowHours = availableTeachers.filter(teacher => {
+    const currentHours = getCurrentTeacherHours(schedule, teacher.name, undefined, data);
+    const maxHours = teacher.max_hours_per_week || teacher.maxHours || 22;
+    return currentHours < maxHours * 0.7; // 70% 미만인 교사
+  });
+  
+  if (teachersWithLowHours.length > 0) {
+    priority += 30; // 시수가 부족한 교사 우선
+  }
   
   return priority;
 };
@@ -135,7 +158,7 @@ export const createPlacementPlan = (
         if (availableTeachers.length > 0) {
           // 일반 수업은 1시간 단위로 배치
           for (let i = 0; i < remainingHours; i++) {
-            const basePriority = calculatePlacementPriority(className, subject.name, availableTeachers, data);
+            const basePriority = calculatePlacementPriority(className, subject.name, availableTeachers, data, schedule);
             const randomFactor = Math.random() * 0.1;
             
             subjectPlacementPlan.push({
@@ -1784,85 +1807,105 @@ const tryPlaceSubjectInSlot = (
   teacherHours: TeacherHoursTracker,
   addLog: (message: string, type?: string) => void
 ): boolean => {
-  // 교사 시수 제한 엄격 확인 (블록제 수업 고려)
-  const currentHours = teacherHours[teacher.name]?.current || 0;
-  // max_hours_per_week 우선 사용, 없으면 maxHours, 기본값 22시간
-  const maxHours = teacher.max_hours_per_week || teacher.max_hours_per_week || teacherHours[teacher.name]?.max || teacher.maxHours || 22;
-  
-  // 블록제 교사인지 확인 (제약조건에서 해당 교사가 블록제로 설정되어 있는지 확인)
-  const blockPeriodConstraints = data.constraints?.must?.filter(c => c.type === 'block_period_requirement') || [];
-  const isBlockPeriodTeacher = blockPeriodConstraints.some(c => c.subject === teacher.name);
-  const requiredHours = isBlockPeriodTeacher ? 2 : 1; // 블록제 교사는 2교시 필요
-  
-  if (currentHours + requiredHours > maxHours) {
-    addLog(`⚠️ ${teacher.name} 교사 시수 초과로 배치 불가 (현재: ${currentHours}시간, 필요: ${requiredHours}시간, 최대: ${maxHours}시간)`, 'warning');
+  // 1. 기본 제약조건 검증
+  if (!validateSlotPlacement(schedule, className, day, period, teacher, subject.name, data, addLog)) {
     return false;
   }
   
-  // 해당 학급 시수 제한 확인
+  // 2. 교사 시수 제한 확인
+  const currentHours = teacherHours[teacher.name]?.current || 0;
+  const maxHours = teacher.max_hours_per_week || teacherHours[teacher.name]?.max || teacher.maxHours || 22;
+  
+  if (currentHours >= maxHours) {
+    addLog(`❌ ${teacher.name} 교사 시수 제한 초과: ${currentHours}/${maxHours}시간`, 'error');
+    return false;
+  }
+  
+  // 3. 교사 학급별 시수 제한 확인
   const classKey = convertClassNameToKey(className);
   const classHoursLimit = teacher.weeklyHoursByGrade?.[classKey] || 0;
-  const currentClassHours = getCurrentTeacherHours(schedule, teacher.name, className);
+  const currentClassHours = getCurrentTeacherHours(schedule, teacher.name, className, data);
   
   if (classHoursLimit > 0 && currentClassHours >= classHoursLimit) {
-    addLog(`⚠️ ${teacher.name} 교사 ${className} 학급 시수 제한 초과로 배치 불가 (현재: ${currentClassHours}시간, 제한: ${classHoursLimit}시간)`, 'warning');
+    addLog(`❌ ${teacher.name} 교사 ${className} 학급 시수 제한 초과: ${currentClassHours}/${classHoursLimit}시간`, 'error');
     return false;
   }
   
-  // 제약조건 검증
-  const unavailableCheck = checkTeacherUnavailable(teacher, day, period);
-  if (!unavailableCheck.allowed) {
-    return false;
-  }
-  
-  // 교사 중복 배정 확인
-  const teacherConflict = checkTeacherTimeConflict(schedule, teacher.name, day, period, className);
-  if (teacherConflict) {
-    return false;
-  }
-  
-  // 블록제 수업 제약조건 확인
-  const blockCheck = checkBlockPeriodRequirement(schedule, className, day, period, teacher.name, data, subject.name);
-  if (!blockCheck.allowed) {
-    addLog(`⚠️ 블록제 수업 제약조건 위반: ${blockCheck.message}`, 'warning');
-    return false;
-  }
-  
-  // 슬롯 배치 검증
-  const slotValid = validateSlotPlacement(schedule, className, day, period, teacher, subject.name, data, addLog);
-  if (!slotValid) {
-    return false;
-  }
+  // 4. 블록제 수업 제약조건 확인
+  const blockPeriodConstraints = data.constraints?.must?.filter(c => c.type === 'block_period_requirement') || [];
+  const isBlockPeriodTeacher = blockPeriodConstraints.some(c => c.subject === teacher.name);
   
   if (isBlockPeriodTeacher) {
-    // 블록제 수업 배치 (같은 반에서 2시간 연속 자동 배치)
-    const success = placeBlockPeriodSubject(schedule, className, day, period, teacher.name, teacher, data, subject.name);
-    if (success) {
-      addLog(`✅ 블록제 수업 배치 성공: ${className} ${day} ${period}-${period + 1}교시 ${subject.name} (${teacher.name} 교사) - 같은 반 2시간 연속`, 'success');
-      // 교사 시수 업데이트 (2교시 배치)
-      if (teacherHours[teacher.name]) {
-        teacherHours[teacher.name].current += 2;
-      }
-      return true;
-    } else {
+    const blockCheck = checkBlockPeriodRequirement(schedule, className, day, period, teacher.name, data, subject.name);
+    if (!blockCheck.allowed) {
+      addLog(`❌ 블록제 수업 제약조건 위반: ${blockCheck.message}`, 'error');
       return false;
     }
-  } else {
-    // 일반 수업 배치
-    schedule[className][day][period] = {
-      subject: subject.name,
-      teachers: [teacher.name],
-      isCoTeaching: false,
-      isFixed: false
-    };
-    
-    // 교사 시수 업데이트
-    if (teacherHours[teacher.name]) {
-      teacherHours[teacher.name].current++;
+  }
+  
+  // 5. 특별실 충돌 확인
+  if (subject.is_space_limited) {
+    let specialRoomConflict = false;
+    for (const otherClassName of Object.keys(schedule)) {
+      if (otherClassName !== className && schedule[otherClassName] && schedule[otherClassName][day]) {
+        const otherSlot = schedule[otherClassName][day][period - 1];
+        if (otherSlot && typeof otherSlot === 'object' && 'subject' in otherSlot) {
+          const otherSubject = data.subjects?.find(s => s.name === otherSlot.subject);
+          if (otherSubject?.is_space_limited) {
+            specialRoomConflict = true;
+            break;
+          }
+        }
+      }
     }
     
-    return true;
+    if (specialRoomConflict) {
+      addLog(`❌ 특별실 충돌: ${className} ${day}요일 ${period}교시에 특별실을 사용하는 다른 과목이 이미 배치되어 있습니다.`, 'error');
+      return false;
+    }
   }
+  
+  // 6. 실제 배치 수행
+  const slotIndex = period - 1;
+  schedule[className][day][slotIndex] = {
+    subject: subject.name,
+    teachers: [teacher.name],
+    isCoTeaching: false,
+    isFixed: false,
+    isBlockPeriod: isBlockPeriodTeacher,
+    blockPartner: isBlockPeriodTeacher ? slotIndex + 1 : undefined
+  };
+  
+  // 7. 교사 시수 업데이트
+  teacherHours[teacher.name].current++;
+  
+  // 8. 블록제 수업인 경우 다음 교시도 자동 배치
+  if (isBlockPeriodTeacher) {
+    const nextSlotIndex = period;
+    const maxPeriods = data.base?.periods_per_day?.[day] || 7;
+    
+    if (nextSlotIndex < maxPeriods) {
+      // 다음 교시 교사 중복 확인
+      const teacherConflictNext = checkTeacherTimeConflict(schedule, teacher.name, day, period + 1, className);
+      if (teacherConflictNext.allowed) {
+        schedule[className][day][nextSlotIndex] = {
+          subject: subject.name,
+          teachers: [teacher.name],
+          isCoTeaching: false,
+          isFixed: false,
+          isBlockPeriod: true,
+          blockPartner: slotIndex
+        };
+        teacherHours[teacher.name].current++;
+        addLog(`✅ 블록제 수업 배치: ${className} ${day} ${period}-${period + 1}교시 ${subject.name} (${teacher.name})`, 'success');
+      } else {
+        addLog(`⚠️ 블록제 수업 다음 교시 배치 실패: ${teacherConflictNext.message}`, 'warning');
+      }
+    }
+  }
+  
+  addLog(`✅ 수업 배치: ${className} ${day} ${period}교시 ${subject.name} (${teacher.name})`, 'success');
+  return true;
 };
 
 // 교사 교체 시도
@@ -2567,4 +2610,4 @@ export const generateTimetable = async (
   setProgress?.(100);
 
   return { schedule, teacherHours, stats, hasErrors, errorMessage };
-}; 
+};
