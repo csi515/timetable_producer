@@ -18,6 +18,378 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 
+// 제약조건 설명 데이터
+const constraintDescriptions = {
+  // 🧑‍🏫 교사 관련 제약조건
+  no_duplicate_teachers: {
+    title: '교사 중복 금지',
+    description: '한 교사가 같은 시간에 여러 반을 가르칠 수 없도록 합니다.',
+    what: '동일한 교시에 한 교사가 여러 학급에 동시 배정되는 것을 방지합니다.',
+    result: '교사가 시간 충돌 없이 한 번에 한 학급만 담당하게 됩니다.',
+    ifNotSet: '교사가 같은 시간에 여러 반을 가르치게 되어 물리적으로 불가능한 상황이 발생할 수 있습니다.',
+    priority: 'must',
+    icon: '🚫'
+  },
+  teacher_same_class_daily_limit: {
+    title: '교사 일일 학급 중복 금지',
+    description: '같은 교사가 하루에 한 학급에 두 번 이상 들어가는 것을 방지합니다.',
+    what: '한 교사가 같은 날에 특정 학급에 여러 번 수업하는 것을 제한합니다.',
+    result: '교사와 학생 간의 수업 분산이 균형있게 이루어집니다.',
+    ifNotSet: '특정 교사가 한 학급에 과도하게 집중되어 다른 학급 수업에 지장을 줄 수 있습니다.',
+    priority: 'must',
+    icon: '📅'
+  },
+  teacher_consecutive_restriction: {
+    title: '교사 연속 수업 금지',
+    description: '한 교사가 하루에 연속으로 수업하지 않도록 합니다.',
+    what: '교사의 연속 수업을 완전히 금지하여 휴식 시간을 보장합니다.',
+    result: '교사가 연속 수업 없이 적절한 휴식 시간을 가질 수 있습니다.',
+    ifNotSet: '교사가 연속으로 수업하게 되어 피로도가 증가할 수 있습니다.',
+    priority: 'optional',
+    icon: '⏸️'
+  },
+  consecutive_teaching_limit: {
+    title: '연속 수업 제한 (권장사항)',
+    description: '교사의 연속 수업을 2시간으로 제한하여 피로도를 줄입니다.',
+    what: '한 교사가 같은 날에 최대 2시간까지만 연속으로 수업할 수 있도록 제한합니다.',
+    result: '교사의 피로도를 줄이고 수업 효율성을 높일 수 있습니다.',
+    ifNotSet: '교사가 3시간 이상 연속 수업하게 되어 피로도가 증가할 수 있습니다.',
+    priority: 'optional',
+    icon: '⏰'
+  },
+  teacher_unavailable_time: {
+    title: '교사 수업 불가 시간',
+    description: '특정 교사의 특정 요일·교시에 수업 배정을 금지합니다.',
+    what: '교사가 개인 사정으로 수업할 수 없는 시간을 지정합니다.',
+    result: '교사의 개인 일정을 고려한 시간표가 생성됩니다.',
+    ifNotSet: '교사가 수업할 수 없는 시간에 배정되어 실제 운영에 문제가 발생할 수 있습니다.',
+    priority: 'must',
+    icon: '🚷'
+  },
+  teacher_max_daily_hours: {
+    title: '교사 일일 최대 수업 수',
+    description: '한 교사의 하루 최대 수업 수를 제한합니다.',
+    what: '교사가 하루에 가질 수 있는 최대 수업 시간을 설정합니다.',
+    result: '교사의 과도한 업무 부담을 방지할 수 있습니다.',
+    ifNotSet: '교사가 하루에 과도한 수업을 담당하게 되어 피로도가 증가할 수 있습니다.',
+    priority: 'optional',
+    icon: '📊'
+  },
+  teacher_subject_conflict: {
+    title: '교사 과목 충돌 방지',
+    description: '두 과목을 가르치는 교사의 과목이 동시에 열리지 않도록 합니다.',
+    what: '한 교사가 담당하는 여러 과목이 같은 시간에 배정되지 않도록 방지합니다.',
+    result: '교사가 담당 과목 간 시간 충돌 없이 수업할 수 있습니다.',
+    ifNotSet: '교사가 담당하는 과목들이 같은 시간에 배정되어 수업 진행이 불가능할 수 있습니다.',
+    priority: 'must',
+    icon: '⚡'
+  },
+  teacher_preferred_time: {
+    title: '교사 선호 시간대',
+    description: '특정 교사의 선호 시간대에 수업을 우선 배정합니다.',
+    what: '교사가 선호하는 요일이나 교시에 수업을 배정하도록 우선순위를 부여합니다.',
+    result: '교사의 선호도를 반영한 만족도 높은 시간표가 생성됩니다.',
+    ifNotSet: '교사의 선호도가 반영되지 않아 만족도가 낮을 수 있습니다.',
+    priority: 'optional',
+    icon: '⭐'
+  },
+  teacher_class_restriction: {
+    title: '교사-학급 배정 제한',
+    description: '특정 교사가 특정 반을 가르치지 않도록 제한합니다.',
+    what: '교사와 학급 간의 배정을 제한하여 특정 조합을 방지합니다.',
+    result: '원하지 않는 교사-학급 조합을 피할 수 있습니다.',
+    ifNotSet: '원하지 않는 교사-학급 조합이 발생할 수 있습니다.',
+    priority: 'optional',
+    icon: '🚫'
+  },
+  co_teaching_requirement: {
+    title: '공동 수업 요구사항',
+    description: '특정 교사가 다른 교사와 함께 수업해야 합니다.',
+    what: '주교사와 부교사가 함께 수업하는 공동 수업을 지정된 시간에 배정합니다.',
+    result: '공동 수업이 필요한 과목이 적절한 시간에 배정됩니다.',
+    ifNotSet: '공동 수업이 필요한 과목이 단독 수업으로 배정될 수 있습니다.',
+    priority: 'must',
+    icon: '🤝'
+  },
+  specific_teacher_co_teaching: {
+    title: '특정 교사의 공동수업',
+    description: '특정 교사가 반드시 다른 교사와 함께 수업해야 합니다.',
+    what: '주교사가 부교사 후보들과 골고루 공동 수업을 진행하도록 합니다.',
+    result: '공동 수업이 필요한 교사의 부담을 여러 교사가 분담합니다.',
+    ifNotSet: '특정 교사가 과도한 공동 수업을 담당하게 될 수 있습니다.',
+    priority: 'optional',
+    icon: '👥'
+  },
+  // 🏫 학급 관련 제약조건
+  no_duplicate_classes: {
+    title: '학급 중복 금지',
+    description: '한 학급이 같은 시간에 여러 과목을 들을 수 없도록 합니다.',
+    what: '동일한 교시에 한 학급에 여러 과목이 배정되는 것을 방지합니다.',
+    result: '학생들이 시간 충돌 없이 수업을 들을 수 있습니다.',
+    ifNotSet: '학생들이 같은 시간에 여러 과목을 들어야 하는 불가능한 상황이 발생할 수 있습니다.',
+    priority: 'must',
+    icon: '🚫'
+  },
+  class_daily_subject_limit: {
+    title: '학급 일일 과목 중복 금지',
+    description: '하루에 특정 과목이 중복되지 않도록 합니다.',
+    what: '같은 과목이 하루에 여러 번 배정되는 것을 방지합니다.',
+    result: '학생들이 다양한 과목을 균형있게 학습할 수 있습니다.',
+    ifNotSet: '특정 과목이 하루에 과도하게 집중되어 학습 효율이 떨어질 수 있습니다.',
+    priority: 'optional',
+    icon: '📚'
+  },
+  class_max_daily_periods: {
+    title: '학급 일일 최대 교시 수',
+    description: '한 학급의 하루 최대 교시 수를 제한합니다.',
+    what: '학급이 하루에 가질 수 있는 최대 수업 시간을 설정합니다.',
+    result: '학생들의 과도한 학습 부담을 방지할 수 있습니다.',
+    ifNotSet: '학생들이 하루에 과도한 수업을 들어야 할 수 있습니다.',
+    priority: 'must',
+    icon: '⏰'
+  },
+  class_consecutive_subject_restriction: {
+    title: '학급 연속 과목 제한',
+    description: '한 과목의 수업이 연속된 시간으로 배정되지 않도록 합니다.',
+    what: '특정 과목이 연속된 교시에 배정되는 것을 방지합니다.',
+    result: '학생들이 다양한 과목을 골고루 학습할 수 있습니다.',
+    ifNotSet: '특정 과목이 연속으로 배정되어 학습 효율이 떨어질 수 있습니다.',
+    priority: 'optional',
+    icon: '🔄'
+  },
+  class_daily_subject_once: {
+    title: '학급 일일 과목 1회 제한',
+    description: '체육, 음악, 실험 등 특정 과목은 하루에 한 번만 편성합니다.',
+    what: '특정 과목이 하루에 한 번만 배정되도록 제한합니다.',
+    result: '학생들이 특정 과목에 과도하게 집중하지 않고 균형있게 학습할 수 있습니다.',
+    ifNotSet: '특정 과목이 하루에 여러 번 배정되어 학습 균형이 깨질 수 있습니다.',
+    priority: 'optional',
+    icon: '1️⃣'
+  },
+  class_daily_distribution: {
+    title: '학급 일일 과목 분산',
+    description: '한 학급의 하루 시간표가 과도하게 치우치지 않도록 분산 배정합니다.',
+    what: '학급의 하루 수업이 특정 시간대에 집중되지 않도록 분산합니다.',
+    result: '학생들이 하루 종일 균형있게 학습할 수 있습니다.',
+    ifNotSet: '수업이 특정 시간대에 집중되어 학습 효율이 떨어질 수 있습니다.',
+    priority: 'optional',
+    icon: '📈'
+  },
+  // 📚 과목 관련 제약조건
+  subject_weekly_hours: {
+    title: '과목 주당 시수 고정',
+    description: '주당 시수가 고정되어 있어야 합니다.',
+    what: '각 과목의 주간 수업 시간이 정확히 배정되도록 합니다.',
+    result: '교육과정에 맞는 정확한 수업 시간이 보장됩니다.',
+    ifNotSet: '과목별 주간 수업 시간이 부족하거나 초과될 수 있습니다.',
+    priority: 'must',
+    icon: '📅'
+  },
+  subject_fixed_time: {
+    title: '과목 고정 시간',
+    description: '특정 과목은 반드시 특정 요일/교시에 배정합니다.',
+    what: '특정 과목을 지정된 시간에 고정 배정합니다.',
+    result: '특별한 이유로 고정이 필요한 과목이 원하는 시간에 배정됩니다.',
+    ifNotSet: '고정이 필요한 과목이 다른 시간에 배정될 수 있습니다.',
+    priority: 'must',
+    icon: '📌'
+  },
+  subject_consecutive_periods: {
+    title: '과목 연속 교시 필요',
+    description: '특정 과목은 연속 2교시 이상이 필요합니다.',
+    what: '실험, 체육 등 연속 수업이 필요한 과목을 연속 교시에 배정합니다.',
+    result: '연속 수업이 필요한 과목이 적절하게 배정됩니다.',
+    ifNotSet: '연속 수업이 필요한 과목이 분리되어 배정될 수 있습니다.',
+    priority: 'must',
+    icon: '🔗'
+  },
+  subject_teacher_requirement: {
+    title: '과목-교사 배정 제한',
+    description: '특정 과목은 특정 교사만 담당합니다.',
+    what: '특정 과목을 특정 교사만 가르칠 수 있도록 제한합니다.',
+    result: '전문성이 필요한 과목이 적절한 교사에게 배정됩니다.',
+    ifNotSet: '전문성이 없는 교사가 특정 과목을 담당할 수 있습니다.',
+    priority: 'optional',
+    icon: '👨‍🏫'
+  },
+  subject_fixed_only: {
+    title: '고정수업 전용 과목',
+    description: '특정 과목들을 고정수업으로만 배치하고 랜덤 배치를 제외합니다.',
+    what: '선택된 과목들이 고정 수업으로만 배정되고 자동 배정에서 제외됩니다.',
+    result: '중요한 과목들이 수동으로 관리되어 안정적인 시간표가 생성됩니다.',
+    ifNotSet: '중요한 과목들이 자동 배정되어 예상치 못한 시간에 배정될 수 있습니다.',
+    priority: 'optional',
+    icon: '🔒'
+  },
+  subject_blocked_period: {
+    title: '과목별 시간 제한',
+    description: '특정 과목을 특정 시간에 배치하지 않습니다.',
+    what: '특정 과목이 지정된 시간에 배정되지 않도록 제한합니다.',
+    result: '과목의 특성에 맞지 않는 시간 배정을 방지할 수 있습니다.',
+    ifNotSet: '과목의 특성에 맞지 않는 시간에 배정될 수 있습니다.',
+    priority: 'optional',
+    icon: '🚫'
+  },
+  avoid_consecutive_subjects: {
+    title: '연속 수업 금지',
+    description: '같은 과목이 연속으로 배치되지 않도록 합니다.',
+    what: '특정 과목이 연속된 교시에 배정되는 것을 방지합니다.',
+    result: '학생들이 다양한 과목을 골고루 학습할 수 있습니다.',
+    ifNotSet: '특정 과목이 연속으로 배정되어 학습 효율이 떨어질 수 있습니다.',
+    priority: 'optional',
+    icon: '⏸️'
+  },
+  morning_priority_subjects: {
+    title: '오전 우선 과목',
+    description: '특정 과목을 오전 시간에 우선 배치합니다.',
+    what: '중요한 과목들을 오전 시간대에 우선적으로 배정합니다.',
+    result: '학생들이 집중력이 높은 오전 시간에 중요한 과목을 학습할 수 있습니다.',
+    ifNotSet: '중요한 과목이 오후 시간에 배정되어 학습 효율이 떨어질 수 있습니다.',
+    priority: 'optional',
+    icon: '🌅'
+  },
+  afternoon_priority_subjects: {
+    title: '오후 우선 과목',
+    description: '특정 과목을 오후 시간에 우선 배치합니다.',
+    what: '체육, 실습 등 오후에 적합한 과목들을 오후 시간대에 우선 배정합니다.',
+    result: '과목의 특성에 맞는 시간대에 배정되어 학습 효과가 높아집니다.',
+    ifNotSet: '오후에 적합한 과목이 오전에 배정되어 학습 효과가 떨어질 수 있습니다.',
+    priority: 'optional',
+    icon: '🌆'
+  },
+  max_daily_subject_hours: {
+    title: '일일 과목 시수 제한',
+    description: '하루에 같은 과목을 최대 몇 시간까지만 배치합니다.',
+    what: '특정 과목이 하루에 배정될 수 있는 최대 시간을 제한합니다.',
+    result: '학생들이 특정 과목에 과도하게 집중하지 않고 균형있게 학습할 수 있습니다.',
+    ifNotSet: '특정 과목이 하루에 과도하게 배정되어 학습 균형이 깨질 수 있습니다.',
+    priority: 'optional',
+    icon: '📊'
+  },
+  // 🧰 기타 조건
+  space_constraint: {
+    title: '공간 제약',
+    description: '특별실 사용 과목의 동시 수업 제한합니다.',
+    what: '특별실이 필요한 과목들이 동시에 배정되지 않도록 제한합니다.',
+    result: '특별실 사용 충돌 없이 수업이 진행될 수 있습니다.',
+    ifNotSet: '여러 과목이 같은 특별실을 동시에 사용하려고 하여 충돌이 발생할 수 있습니다.',
+    priority: 'must',
+    icon: '🏫'
+  },
+  free_period: {
+    title: '공강 시간 설정',
+    description: '특정 시간은 공강 시간으로 설정합니다.',
+    what: '지정된 시간을 수업 없이 비워둡니다.',
+    result: '학생들이 휴식 시간을 가질 수 있습니다.',
+    ifNotSet: '모든 시간에 수업이 배정되어 학생들이 휴식할 시간이 없을 수 있습니다.',
+    priority: 'optional',
+    icon: '☕'
+  },
+  pe_concurrent_limit: {
+    title: '체육 동시 수업 제한',
+    description: '체육 수업은 학년별 동시 수용 가능한 최대 학급 수를 넘지 않도록 합니다.',
+    what: '체육 수업이 동시에 진행될 수 있는 학급 수를 제한합니다.',
+    result: '체육 시설 사용 충돌 없이 수업이 진행될 수 있습니다.',
+    ifNotSet: '여러 학급이 동시에 체육 수업을 하려고 하여 시설 사용에 문제가 발생할 수 있습니다.',
+    priority: 'optional',
+    icon: '⚽'
+  },
+  subject_exclusive_time: {
+    title: '과목 배타적 시간',
+    description: '특정 과목은 같은 시간에 여러 반에서 동시에 배정되면 안 됩니다.',
+    what: '특정 과목이 여러 학급에서 동시에 진행되지 않도록 제한합니다.',
+    result: '과목별 특성에 맞는 독립적인 수업 환경이 보장됩니다.',
+    ifNotSet: '여러 학급에서 동시에 같은 과목을 진행하여 학습 효과가 떨어질 수 있습니다.',
+    priority: 'optional',
+    icon: '🔒'
+  },
+  first_last_period_limit: {
+    title: '첫/마지막 교시 제한',
+    description: '교사 또는 학급의 첫/마지막 수업이 너무 이르거나 늦지 않도록 합니다.',
+    what: '교사나 학급의 첫 수업과 마지막 수업 시간을 제한합니다.',
+    result: '교사와 학생 모두 적절한 시간에 수업을 시작하고 종료할 수 있습니다.',
+    ifNotSet: '교사나 학생이 너무 이르거나 늦은 시간에 수업을 해야 할 수 있습니다.',
+    priority: 'optional',
+    icon: '⏰'
+  },
+  similar_subject_conflict: {
+    title: '유사 과목 충돌 방지',
+    description: '비슷한 과목이 동일 시간에 배정되지 않도록 합니다.',
+    what: '성격이 비슷한 과목들이 같은 시간에 배정되는 것을 방지합니다.',
+    result: '학생들이 유사한 과목을 동시에 학습하지 않아 혼란을 방지할 수 있습니다.',
+    ifNotSet: '유사한 과목이 동시에 배정되어 학습에 혼란이 생길 수 있습니다.',
+    priority: 'optional',
+    icon: '🔄'
+  },
+  classroom_requirement: {
+    title: '교실 배정 제한',
+    description: '특정 수업은 특정 교실에서만 진행 가능합니다.',
+    what: '특정 과목을 지정된 교실에서만 수업하도록 제한합니다.',
+    result: '과목의 특성에 맞는 적절한 교실에서 수업이 진행됩니다.',
+    ifNotSet: '과목의 특성에 맞지 않는 교실에서 수업이 진행될 수 있습니다.',
+    priority: 'optional',
+    icon: '🏠'
+  },
+  fourth_period_distribution: {
+    title: '4교시 수업 분산 제약',
+    description: '한 교사에게 4교시 수업이 과도하게 집중되지 않도록 분산 배정합니다.',
+    what: '교사별로 4교시 수업이 균등하게 분산되도록 합니다.',
+    result: '교사들의 4교시 수업 부담이 균등하게 분산됩니다.',
+    ifNotSet: '특정 교사에게 4교시 수업이 과도하게 집중될 수 있습니다.',
+    priority: 'optional',
+    icon: '📊'
+  },
+  // 🎯 블록제 수업 제약조건
+  block_period_requirement: {
+    title: '블록제 수업',
+    description: '특정 수업은 연속된 두 교시에 배치되어야 합니다.',
+    what: '실험, 체육, 프로젝트 등 연속 수업이 필요한 과목을 2교시 연속으로 배정합니다.',
+    result: '연속 수업이 필요한 과목이 적절하게 배정됩니다.',
+    ifNotSet: '연속 수업이 필요한 과목이 분리되어 배정되어 수업 진행이 어려울 수 있습니다.',
+    priority: 'must',
+    icon: '🔗'
+  }
+};
+
+// 툴팁 컴포넌트
+const Tooltip = ({ children, content, position = 'top' }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  
+  const positionClasses = {
+    top: 'bottom-full left-1/2 transform -translate-x-1/2 mb-2',
+    bottom: 'top-full left-1/2 transform -translate-x-1/2 mt-2',
+    left: 'right-full top-1/2 transform -translate-y-1/2 mr-2',
+    right: 'left-full top-1/2 transform -translate-y-1/2 ml-2'
+  };
+
+  return (
+    <div className="relative inline-block">
+      <div
+        onMouseEnter={() => setIsVisible(true)}
+        onMouseLeave={() => setIsVisible(false)}
+        onFocus={() => setIsVisible(true)}
+        onBlur={() => setIsVisible(false)}
+        className="cursor-help"
+      >
+        {children}
+      </div>
+      {isVisible && (
+        <div className={`absolute z-50 ${positionClasses[position]}`}>
+          <div className="bg-gray-900 text-white text-sm rounded-lg p-3 max-w-xs shadow-lg">
+            {content}
+            <div className={`absolute w-2 h-2 bg-gray-900 transform rotate-45 ${
+              position === 'top' ? 'top-full left-1/2 -translate-x-1/2 -mt-1' :
+              position === 'bottom' ? 'bottom-full left-1/2 -translate-x-1/2 -mb-1' :
+              position === 'left' ? 'left-full top-1/2 -translate-y-1/2 -ml-1' :
+              'right-full top-1/2 -translate-y-1/2 -mr-1'
+            }`}></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // 드래그 가능한 조건 아이템 컴포넌트
 function SortableConstraintItem({ constraint, index, priority, onRemove, getConstraintTypeName }) {
   const {
@@ -37,6 +409,7 @@ function SortableConstraintItem({ constraint, index, priority, onRemove, getCons
 
   const borderColor = priority === 'must' ? '#dc3545' : '#fd7e14';
   const textColor = priority === 'must' ? '#dc3545' : '#fd7e14';
+  const bgColor = priority === 'must' ? '#fef2f2' : '#fff7ed';
 
   // 삭제 버튼 클릭 핸들러 (이벤트 전파 중지)
   const handleDelete = (e) => {
@@ -45,6 +418,19 @@ function SortableConstraintItem({ constraint, index, priority, onRemove, getCons
     onRemove(priority, index);
   };
 
+  const constraintDesc = constraintDescriptions[constraint.type];
+  const tooltipContent = constraintDesc ? (
+    <div className="space-y-2">
+      <div className="font-semibold">{constraintDesc.title}</div>
+      <div className="text-xs">
+        <div className="mb-1"><strong>🎯 의미:</strong> {constraintDesc.what}</div>
+        <div className="mb-1"><strong>✅ 결과:</strong> {constraintDesc.result}</div>
+        <div className="mb-1"><strong>⚠️ 미설정 시:</strong> {constraintDesc.ifNotSet}</div>
+        <div><strong>우선순위:</strong> {constraintDesc.priority === 'must' ? '필수 조건' : '권장 조건'}</div>
+      </div>
+    </div>
+  ) : getConstraintTypeName(constraint.type);
+
   return (
     <div 
       ref={setNodeRef} 
@@ -52,6 +438,7 @@ function SortableConstraintItem({ constraint, index, priority, onRemove, getCons
       style={{ 
         marginBottom: '10px', 
         border: `2px solid ${borderColor}`,
+        backgroundColor: bgColor,
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0.5 : 1,
@@ -69,9 +456,17 @@ function SortableConstraintItem({ constraint, index, priority, onRemove, getCons
             padding: '5px 0'
           }}
         >
-          <h4 className="text-ellipsis" style={{ color: textColor, marginBottom: '5px' }} title={getConstraintTypeName(constraint.type)}>
-            {getConstraintTypeName(constraint.type)}
-          </h4>
+          <div className="flex items-center">
+            <span className="text-xl mr-2" title={constraintDesc?.title || getConstraintTypeName(constraint.type)}>
+              {constraintDesc?.icon || '📋'}
+            </span>
+            <Tooltip content={tooltipContent}>
+              <h4 className="text-ellipsis" style={{ color: textColor, marginBottom: '5px' }} title={getConstraintTypeName(constraint.type)}>
+                {getConstraintTypeName(constraint.type)}
+                <span className="ml-2 text-sm">ℹ️</span>
+              </h4>
+            </Tooltip>
+          </div>
           {constraint.subject && (
             <p className="text-ellipsis">
               <strong>{constraint.type === 'block_period_requirement' ? '교사' : '과목'}:</strong> <span title={constraint.subject === 'all' ? '모든 수업에 해당' : constraint.subject}>
@@ -106,6 +501,17 @@ function SortableConstraintItem({ constraint, index, priority, onRemove, getCons
             </p>
           )}
           {constraint.description && <p className="text-ellipsis-2" style={{ color: '#666' }} title={constraint.description}>{constraint.description}</p>}
+          
+          {/* 우선순위 표시 */}
+          <div className="mt-2">
+            <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+              priority === 'must' 
+                ? 'bg-red-100 text-red-800' 
+                : 'bg-orange-100 text-orange-800'
+            }`}>
+              {priority === 'must' ? '🚫 필수 조건' : '💡 권장 조건'}
+            </span>
+          </div>
         </div>
         
         {/* 삭제 버튼 (드래그 이벤트와 분리) */}
@@ -630,11 +1036,14 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
               onChange={(e) => setNewConstraint({ ...newConstraint, type: e.target.value })}
             >
               <option value="">제약 조건 선택</option>
-              {constraintTypes.map(type => (
-                <option key={type.id} value={type.id}>
-                  {type.name} ({type.description})
-                </option>
-              ))}
+              {constraintTypes.map(type => {
+                const desc = constraintDescriptions[type.id];
+                return (
+                  <option key={type.id} value={type.id}>
+                    {desc?.icon || '📋'} {type.name}
+                  </option>
+                );
+              })}
             </select>
             {getCurrentConstraintType() && (
               <small style={{ color: '#666', fontSize: '14px', marginTop: '5px', display: 'block' }}>
@@ -654,6 +1063,46 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
             </select>
           </div>
         </div>
+
+        {/* 선택된 제약조건 상세 설명 */}
+        {newConstraint.type && constraintDescriptions[newConstraint.type] && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
+            <div className="flex items-start">
+              <div className="text-2xl mr-3">{constraintDescriptions[newConstraint.type].icon}</div>
+              <div className="flex-1">
+                <h4 className="text-lg font-semibold text-blue-800 mb-2">
+                  {constraintDescriptions[newConstraint.type].title}
+                </h4>
+                <p className="text-blue-700 mb-3">{constraintDescriptions[newConstraint.type].description}</p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="bg-white p-3 rounded border">
+                    <h5 className="font-semibold text-gray-800 mb-1">🎯 무엇을 의미하는지</h5>
+                    <p className="text-gray-600">{constraintDescriptions[newConstraint.type].what}</p>
+                  </div>
+                  <div className="bg-white p-3 rounded border">
+                    <h5 className="font-semibold text-gray-800 mb-1">✅ 설정 시 결과</h5>
+                    <p className="text-gray-600">{constraintDescriptions[newConstraint.type].result}</p>
+                  </div>
+                  <div className="bg-white p-3 rounded border">
+                    <h5 className="font-semibold text-gray-800 mb-1">⚠️ 설정하지 않으면</h5>
+                    <p className="text-gray-600">{constraintDescriptions[newConstraint.type].ifNotSet}</p>
+                  </div>
+                </div>
+                
+                <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                  <p className="text-yellow-800 text-sm">
+                    <strong>우선순위:</strong> {
+                      constraintDescriptions[newConstraint.type].priority === 'must' 
+                        ? '🚫 필수 조건 - 위반 시 시간표 생성이 실패할 수 있습니다.'
+                        : '💡 권장 조건 - 가능하면 지켜지지만 필요 시 무시될 수 있습니다.'
+                    }
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 조건별 추가 설정 */}
         {getCurrentConstraintType()?.hasSubject && newConstraint.type !== 'block_period_requirement' && (
@@ -995,13 +1444,148 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
       {/* 제약 조건 유형 설명 */}
       <div className="card" style={{ backgroundColor: '#f8f9fa' }}>
         <h3>📖 제약 조건 유형 설명</h3>
-        <div className="grid grid-2" style={{ marginTop: '20px' }}>
-          {constraintTypes.map(type => (
-            <div key={type.id} style={{ marginBottom: '15px' }}>
-              <h4 style={{ color: '#667eea', fontSize: '16px' }}>{type.name}</h4>
-              <p style={{ color: '#666', fontSize: '14px' }}>{type.description}</p>
+        <p className="text-gray-600 mb-4">각 제약 조건에 마우스를 올리면 상세 설명을 확인할 수 있습니다.</p>
+        
+        <div className="space-y-6">
+          {/* 🧑‍🏫 교사 관련 제약조건 */}
+          <div>
+            <h4 className="text-lg font-semibold text-blue-800 mb-3 flex items-center">
+              <span className="text-xl mr-2">🧑‍🏫</span>
+              교사 관련 제약조건
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {constraintTypes
+                .filter(type => ['no_duplicate_teachers', 'teacher_same_class_daily_limit', 'teacher_consecutive_restriction', 'consecutive_teaching_limit', 'teacher_unavailable_time', 'teacher_max_daily_hours', 'teacher_subject_conflict', 'teacher_preferred_time', 'teacher_class_restriction', 'co_teaching_requirement', 'specific_teacher_co_teaching'].includes(type.id))
+                .map(type => {
+                  const desc = constraintDescriptions[type.id];
+                  return (
+                    <div key={type.id} className="bg-white p-4 rounded-lg border border-gray-200 hover:shadow-md transition-shadow">
+                      <div className="flex items-start">
+                        <span className="text-2xl mr-3">{desc?.icon || '📋'}</span>
+                        <div className="flex-1">
+                          <h5 className="font-semibold text-gray-800 mb-1">{desc?.title || type.name}</h5>
+                          <p className="text-sm text-gray-600 mb-2">{desc?.description || type.description}</p>
+                          <div className="flex items-center">
+                            <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                              desc?.priority === 'must' 
+                                ? 'bg-red-100 text-red-800' 
+                                : 'bg-orange-100 text-orange-800'
+                            }`}>
+                              {desc?.priority === 'must' ? '🚫 필수' : '💡 권장'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
-          ))}
+          </div>
+
+          {/* 🏫 학급 관련 제약조건 */}
+          <div>
+            <h4 className="text-lg font-semibold text-green-800 mb-3 flex items-center">
+              <span className="text-xl mr-2">🏫</span>
+              학급 관련 제약조건
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {constraintTypes
+                .filter(type => ['no_duplicate_classes', 'class_daily_subject_limit', 'class_max_daily_periods', 'class_consecutive_subject_restriction', 'class_daily_subject_once', 'class_daily_distribution'].includes(type.id))
+                .map(type => {
+                  const desc = constraintDescriptions[type.id];
+                  return (
+                    <div key={type.id} className="bg-white p-4 rounded-lg border border-gray-200 hover:shadow-md transition-shadow">
+                      <div className="flex items-start">
+                        <span className="text-2xl mr-3">{desc?.icon || '📋'}</span>
+                        <div className="flex-1">
+                          <h5 className="font-semibold text-gray-800 mb-1">{desc?.title || type.name}</h5>
+                          <p className="text-sm text-gray-600 mb-2">{desc?.description || type.description}</p>
+                          <div className="flex items-center">
+                            <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                              desc?.priority === 'must' 
+                                ? 'bg-red-100 text-red-800' 
+                                : 'bg-orange-100 text-orange-800'
+                            }`}>
+                              {desc?.priority === 'must' ? '🚫 필수' : '💡 권장'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* 📚 과목 관련 제약조건 */}
+          <div>
+            <h4 className="text-lg font-semibold text-purple-800 mb-3 flex items-center">
+              <span className="text-xl mr-2">📚</span>
+              과목 관련 제약조건
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {constraintTypes
+                .filter(type => ['subject_weekly_hours', 'subject_fixed_time', 'subject_consecutive_periods', 'subject_teacher_requirement', 'subject_fixed_only', 'subject_blocked_period', 'avoid_consecutive_subjects', 'morning_priority_subjects', 'afternoon_priority_subjects', 'max_daily_subject_hours', 'block_period_requirement'].includes(type.id))
+                .map(type => {
+                  const desc = constraintDescriptions[type.id];
+                  return (
+                    <div key={type.id} className="bg-white p-4 rounded-lg border border-gray-200 hover:shadow-md transition-shadow">
+                      <div className="flex items-start">
+                        <span className="text-2xl mr-3">{desc?.icon || '📋'}</span>
+                        <div className="flex-1">
+                          <h5 className="font-semibold text-gray-800 mb-1">{desc?.title || type.name}</h5>
+                          <p className="text-sm text-gray-600 mb-2">{desc?.description || type.description}</p>
+                          <div className="flex items-center">
+                            <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                              desc?.priority === 'must' 
+                                ? 'bg-red-100 text-red-800' 
+                                : 'bg-orange-100 text-orange-800'
+                            }`}>
+                              {desc?.priority === 'must' ? '🚫 필수' : '💡 권장'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* 🧰 기타 조건 */}
+          <div>
+            <h4 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+              <span className="text-xl mr-2">🧰</span>
+              기타 조건
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {constraintTypes
+                .filter(type => ['space_constraint', 'free_period', 'pe_concurrent_limit', 'subject_exclusive_time', 'first_last_period_limit', 'similar_subject_conflict', 'classroom_requirement', 'fourth_period_distribution'].includes(type.id))
+                .map(type => {
+                  const desc = constraintDescriptions[type.id];
+                  return (
+                    <div key={type.id} className="bg-white p-4 rounded-lg border border-gray-200 hover:shadow-md transition-shadow">
+                      <div className="flex items-start">
+                        <span className="text-2xl mr-3">{desc?.icon || '📋'}</span>
+                        <div className="flex-1">
+                          <h5 className="font-semibold text-gray-800 mb-1">{desc?.title || type.name}</h5>
+                          <p className="text-sm text-gray-600 mb-2">{desc?.description || type.description}</p>
+                          <div className="flex items-center">
+                            <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                              desc?.priority === 'must' 
+                                ? 'bg-red-100 text-red-800' 
+                                : 'bg-orange-100 text-orange-800'
+                            }`}>
+                              {desc?.priority === 'must' ? '🚫 필수' : '💡 권장'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
         </div>
       </div>
 
