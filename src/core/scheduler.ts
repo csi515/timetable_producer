@@ -418,138 +418,44 @@ export const executePlacementPlan = (
 
 
 // 메인 시간표 생성 함수
+import { NewScheduler } from './newScheduler';
+
 export const generateTimetable = async (
   data: TimetableData,
   addLog: (message: string, type?: string) => void,
   setProgress?: (progress: number) => void
 ): Promise<{ schedule: Schedule; teacherHours: TeacherHoursTracker; stats: any }> => {
-  addLog('🚀 시간표 생성을 시작합니다.', 'info');
-  setProgress?.(10);
-
-  // 1단계: 스케줄 초기화
-  addLog('1단계: 스케줄을 초기화합니다.', 'info');
-  const schedule = initializeSchedule(data);
-  setProgress?.(20);
-
-  // 2단계: 교사 시수 추적기 초기화
-  addLog('2단계: 교사 시수를 추적합니다.', 'info');
-  const teacherHours = initializeTeacherHours(data.teachers || []);
-  setProgress?.(30);
-
-  // 3단계: 고정 수업 적용 (최우선)
-  addLog('3단계: 고정 수업을 먼저 적용합니다.', 'info');
-  const fixedCount = applyFixedClasses(schedule, data, addLog);
-  addLog(`✅ 고정 수업 ${fixedCount}개 적용 완료`, 'success');
-  setProgress?.(40);
-
-  // 4단계: 공동수업 제약조건 처리 (두 번째 우선순위)
-  addLog('4단계: 공동수업을 랜덤하게 배치합니다.', 'info');
-  const coTeachingCount = processCoTeachingConstraints(schedule, data, teacherHours, addLog);
-  addLog(`✅ 공동수업 ${coTeachingCount}개 배치 완료`, 'success');
-  setProgress?.(50);
-
-  // 5단계: 나머지 수업 배치 계획 수립 (제약조건 준수)
-  addLog('5단계: 나머지 수업 배치 계획을 수립합니다.', 'info');
-  const placementPlan = createPlacementPlan(schedule, data, addLog);
-  addLog(`총 ${placementPlan.length}개의 수업을 제약조건을 지켜서 배치합니다.`, 'info');
-  setProgress?.(60);
-
-  // 6a단계: 나머지 수업 랜덤 배치 (제약조건 준수)
-  addLog('6a단계: 나머지 수업을 제약조건을 지켜서 랜덤하게 배치합니다.', 'info');
-  const placedCount = executePlacementPlan(schedule, placementPlan, data, teacherHours, addLog);
-  addLog(`✅ 나머지 수업 ${placedCount}개 배치 완료`, 'success');
-  setProgress?.(65);
-
-  // 6b단계: 교사 시수 제한 검증
-  addLog('6b단계: 교사 시수 제한을 검증합니다.', 'info');
-  const teachersForValidation = data.teachers || [];
-  let teacherHoursValidForStep6b = true;
+  // 새로운 우선순위 기반 스케줄러 사용
+  const newScheduler = new NewScheduler(data);
   
-  teachersForValidation.forEach(teacher => {
-    const currentHours = teacherHours[teacher.name]?.current || 0;
-    const maxHours = teacher.max_hours_per_week || teacherHours[teacher.name]?.max || teacher.maxHours || 22;
-    
-    if (currentHours > maxHours) {
-      addLog(`🚨 ${teacher.name} 교사 시수 초과: ${currentHours}시간 > ${maxHours}시간`, 'error');
-      teacherHoursValidForStep6b = false;
-    }
-  });
+  // 시간표 생성 가능성 사전 검사
+  const feasibilityCheck = newScheduler.checkFeasibility(addLog);
+  if (!feasibilityCheck.isFeasible) {
+    addLog('❌ 시간표 생성이 불가능합니다. 제약조건을 확인해주세요.', 'error');
+    return {
+      schedule: {},
+      teacherHours: {},
+      stats: {}
+    };
+  }
+
+  // 새로운 스케줄러로 시간표 생성
+  const result = await newScheduler.generateTimetable(addLog, setProgress);
   
-  if (!teacherHoursValidForStep6b) {
-    addLog('🚨 교사 시수 제한 위반이 발견되었습니다! 시간표를 재생성해주세요.', 'error');
-  } else {
-    addLog('✅ 모든 교사의 시수 제한이 준수되었습니다.', 'success');
+  if (!result.success) {
+    addLog('❌ 시간표 생성에 실패했습니다.', 'error');
+    return {
+      schedule: result.schedule,
+      teacherHours: result.teacherHours,
+      stats: result.stats
+    };
   }
-  setProgress?.(70);
 
-  // 7단계: 빈 슬롯 채우기
-  addLog('7단계: 빈 슬롯을 채웁니다.', 'info');
-  const filledSlots = fillEmptySlots(schedule, data, teacherHours, addLog);
-  setProgress?.(75);
-
-  // 8단계: 제약조건 준수 확인 (재조정 금지)
-  addLog('8단계: 모든 제약조건 준수 여부를 확인합니다.', 'info');
-  const constraintValidation = validateAllConstraintsCompliance(schedule, data, addLog);
-  if (!constraintValidation.isValid) {
-    addLog('🚨 제약조건 위반이 발견되었습니다. 시간표 생성을 중단합니다.', 'error');
-    
-    // 상세한 위반 보고서 생성
-    const report = generateConstraintViolationReport(constraintValidation.violations);
-    addLog(`📋 ${report.summary}`, 'error');
-    addLog('위반된 제약조건:', 'error');
-    report.details.forEach(detail => {
-      addLog(`  ${detail}`, 'error');
-    });
-    addLog('권장사항:', 'info');
-    report.recommendations.forEach(recommendation => {
-      addLog(`  • ${recommendation}`, 'info');
-    });
-    
-    throw new Error('제약조건 위반으로 인한 시간표 생성 실패');
-  }
-  addLog('✅ 모든 제약조건이 준수되었습니다.', 'success');
-  setProgress?.(85);
-
-  // 10단계: 최종 제약조건 준수 검증 (절대 필수!)
-  addLog('10단계: 모든 제약조건 준수 여부를 최종 검증합니다.', 'info');
-  const finalValidation = validateAllConstraintsCompliance(schedule, data, addLog);
-  if (!finalValidation.isValid) {
-    addLog('🚨 최종 제약조건 위반이 발견되었습니다! 시간표 생성을 중단합니다.', 'error');
-    
-    // 상세한 위반 보고서 생성
-    const report = generateConstraintViolationReport(finalValidation.violations);
-    addLog(`📋 ${report.summary}`, 'error');
-    addLog('위반된 제약조건:', 'error');
-    report.details.forEach(detail => {
-      addLog(`  ${detail}`, 'error');
-    });
-    addLog('권장사항:', 'info');
-    report.recommendations.forEach(recommendation => {
-      addLog(`  • ${recommendation}`, 'info');
-    });
-    
-    throw new Error('제약조건 위반으로 인한 시간표 생성 실패');
-  }
-  addLog('✅ 모든 제약조건이 준수되었습니다.', 'success');
-  setProgress?.(87);
-
-  // 11단계: 시간표 생성 결과 전체 디버깅
-  addLog('11단계: 시간표 생성 결과 전체 디버깅을 수행합니다.', 'info');
-  const debugResult = debugTimetableConstraints(schedule, data, addLog);
-  if (!debugResult.isValid) {
-    addLog('⚠️ 디버깅 과정에서 추가적인 문제점이 발견되었습니다.', 'warning');
-  }
-  setProgress?.(95);
-
-  // 12단계: 통계 계산
-  addLog('12단계: 통계를 계산합니다.', 'info');
-  const stats = calculateScheduleStats(schedule, teacherHours);
-  setProgress?.(100);
-
-  addLog(`시간표 생성 완료: ${placedCount + filledSlots}개 수업 배치`, 'success');
-  setProgress?.(100);
-
-  return { schedule, teacherHours, stats };
+  return {
+    schedule: result.schedule,
+    teacherHours: result.teacherHours,
+    stats: result.stats
+  };
 };
 
 // 교사 시수 균형 재조정 함수

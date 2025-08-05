@@ -6,6 +6,7 @@ export interface BaseData {
 }
 
 export interface Subject {
+  id: string;
   name: string;
   weekly_hours: number;
   is_merged?: boolean;
@@ -13,13 +14,15 @@ export interface Subject {
   max_classes_at_once?: number;
   requires_co_teaching?: boolean;
   block?: boolean; // 블록제 수업 여부 (2시간 연속 수업)
+  priority?: number; // 배치 우선순위 (높을수록 우선)
 }
 
 export interface Teacher {
+  id: string;
   name: string;
-  subjects: string[];
-  unavailable: [string, number][]; // [day, period]
-  available_times?: [string, number][]; // [day, period] - 교사가 수업할 수 있는 시간만 지정
+  subjects: string[]; // 과목 ID 배열
+  unavailable: [string, number][]; // [day, period] - 불가능한 시간
+  available_times?: [string, number][]; // [day, period] - 가능한 시간만 지정
   allow_parallel: boolean;
   co_teaching_with: string;
   maxHours: number;
@@ -27,7 +30,16 @@ export interface Teacher {
   weeklyHoursByGrade: Record<string, number>;
   classWeeklyHours: Record<string, number>;
   subjectHours: Record<string, number>;
-  id?: number;
+  priority?: number; // 배치 우선순위 (높을수록 우선)
+}
+
+export interface Class {
+  id: string;
+  name: string;
+  grade: number;
+  class_number: number;
+  weekly_hours: number; // 주간 총 수업 시수
+  subject_requirements: Record<string, number>; // 과목별 필요 시수
 }
 
 export interface Constraint {
@@ -40,6 +52,7 @@ export interface Constraint {
   class?: string;
   maxPeriods?: number;
   subjects?: string[]; // 고정수업 전용 과목 목록
+  priority?: number; // 제약조건 우선순위
 }
 
 export interface FixedClass {
@@ -59,6 +72,7 @@ export interface TimetableData {
   base: BaseData;
   subjects: Subject[];
   teachers: Teacher[];
+  classes: Class[];
   constraints: {
     must: Constraint[];
     optional: Constraint[];
@@ -99,10 +113,30 @@ export interface ClassSchedule {
 }
 
 export interface Schedule {
-  [className: string]: ClassSchedule;
+  [classId: string]: ClassSchedule;
 }
 
-// 제약조건 검증 결과 타입
+// 새로운 다차원 배열 형태의 시간표 구조
+export interface ClassScheduleArray {
+  [classId: string]: {
+    [day: string]: {
+      [period: number]: ScheduleSlot | null;
+    };
+  };
+}
+
+export interface TeacherScheduleArray {
+  [teacherId: string]: {
+    [day: string]: {
+      [period: number]: {
+        classId: string;
+        subject: string;
+        isCoTeaching: boolean;
+      } | null;
+    };
+  };
+}
+
 export interface ValidationResult {
   allowed: boolean;
   reason?: string;
@@ -115,7 +149,6 @@ export interface ValidationResult {
   conflictSubject?: string; // 충돌하는 과목명
 }
 
-// 교사 시수 추적 타입
 export interface TeacherHours {
   current: number;
   max: number;
@@ -127,14 +160,12 @@ export interface TeacherHoursTracker {
   [teacherName: string]: TeacherHours;
 }
 
-// 생성 로그 타입
 export interface GenerationLog {
   message: string;
   type: 'info' | 'success' | 'warning' | 'error';
   timestamp?: Date;
 }
 
-// 통계 타입
 export interface ScheduleStats {
   totalSlots: number;
   filledSlots: number;
@@ -145,7 +176,6 @@ export interface ScheduleStats {
   classSubjectHours: Record<string, Record<string, number>>;
 }
 
-// 배치 계획 타입
 export interface PlacementPlan {
   className: string;
   subject: string;
@@ -153,17 +183,54 @@ export interface PlacementPlan {
   priority: number;
 }
 
-// 사용 가능한 슬롯 타입
 export interface AvailableSlot {
   day: string;
   period: number;
   slotIndex: number;
 }
 
-// 공동수업 제약조건 타입
 export interface CoTeachingConstraint {
   mainTeacher: string;
   coTeachers: string[];
   balanceMode: boolean;
   participation: Record<string, number>;
+}
+
+// 새로운 배치 우선순위 관련 타입
+export interface PlacementPriority {
+  subjectId: string;
+  classId: string;
+  priority: number;
+  difficulty: number; // 배치 난이도 (높을수록 어려움)
+  availableSlots: number; // 가능한 슬롯 수
+  requiredTeachers: string[]; // 필요한 교사들
+  isBlockSubject: boolean;
+  isCoTeaching: boolean;
+}
+
+// 백트래킹 관련 타입
+export interface BacktrackState {
+  schedule: ClassScheduleArray;
+  teacherSchedule: TeacherScheduleArray;
+  teacherHours: TeacherHoursTracker;
+  placementHistory: PlacementHistory[];
+  currentStep: number;
+}
+
+export interface PlacementHistory {
+  classId: string;
+  day: string;
+  period: number;
+  subjectId: string;
+  teachers: string[];
+  timestamp: Date;
+}
+
+// 제약조건 검증 함수 타입
+export interface ConstraintChecker {
+  isTeacherAvailable: (teacherId: string, day: string, period: number) => ValidationResult;
+  isClassSubjectLimitOk: (classId: string, subjectId: string) => ValidationResult;
+  isTeacherWeeklyHoursWithinLimit: (teacherId: string) => ValidationResult;
+  isBlockSubjectValid: (subjectId: string, day: string, period: number) => ValidationResult;
+  isCoTeachingValid: (subjectId: string, teacher1: string, teacher2: string, day: string, period: number) => ValidationResult;
 } 
