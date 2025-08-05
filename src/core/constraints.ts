@@ -1000,3 +1000,461 @@ export const generateConstraintViolationReport = (
   
   return { summary, details, recommendations };
 };
+
+// 시간표 생성 결과 전체 디버깅 함수 (새로 추가)
+export const debugTimetableConstraints = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): { isValid: boolean; violations: string[] } => {
+  const violations: string[] = [];
+  let isValid = true;
+  
+  addLog('🔍 시간표 생성 결과 전체 디버깅을 시작합니다...', 'info');
+  addLog('', 'info');
+
+  // 1. 교사별 수업 가능 시간 외 수업이 배정되지 않았는가?
+  addLog('1️⃣ 교사별 수업 가능 시간 검증', 'info');
+  const teacherTimeViolations = validateTeacherAvailableTimes(schedule, data, addLog);
+  if (teacherTimeViolations.length > 0) {
+    violations.push(...teacherTimeViolations);
+    isValid = false;
+  } else {
+    addLog('✅ 조건 만족', 'success');
+  }
+  addLog('', 'info');
+
+  // 2. 교사별 주간 수업 시수가 사전에 설정한 최대치를 초과하지 않았는가?
+  addLog('2️⃣ 교사별 주간 수업 시수 검증', 'info');
+  const teacherHoursViolations = validateTeacherWeeklyHours(schedule, data, addLog);
+  if (teacherHoursViolations.length > 0) {
+    violations.push(...teacherHoursViolations);
+    isValid = false;
+  } else {
+    addLog('✅ 조건 만족', 'success');
+  }
+  addLog('', 'info');
+
+  // 3. 학급별 주간 수업 시수가 정확하게 배정되었는가?
+  addLog('3️⃣ 학급별 주간 수업 시수 검증', 'info');
+  const classHoursViolations = validateClassWeeklyHours(schedule, data, addLog);
+  if (classHoursViolations.length > 0) {
+    violations.push(...classHoursViolations);
+    isValid = false;
+  } else {
+    addLog('✅ 조건 만족', 'success');
+  }
+  addLog('', 'info');
+
+  // 4. 블록제 수업이 올바르게 연속 2교시로 배정되었는가?
+  addLog('4️⃣ 블록제 수업 연속 배정 검증', 'info');
+  const blockPeriodViolations = validateBlockPeriodPlacements(schedule, data, addLog);
+  if (blockPeriodViolations.length > 0) {
+    violations.push(...blockPeriodViolations);
+    isValid = false;
+  } else {
+    addLog('✅ 조건 만족', 'success');
+  }
+  addLog('', 'info');
+
+  // 5. 공동수업 조건이 지켜졌는가?
+  addLog('5️⃣ 공동수업 조건 검증', 'info');
+  const coTeachingViolations = validateCoTeachingConditions(schedule, data, addLog);
+  if (coTeachingViolations.length > 0) {
+    violations.push(...coTeachingViolations);
+    isValid = false;
+  } else {
+    addLog('✅ 조건 만족', 'success');
+  }
+  addLog('', 'info');
+
+  // 6. 동일 시간에 한 교사가 두 반에 동시에 배정되어 있지는 않은가?
+  addLog('6️⃣ 교사 동시 배정 검증', 'info');
+  const teacherConflictViolations = validateTeacherSimultaneousAssignment(schedule, data, addLog);
+  if (teacherConflictViolations.length > 0) {
+    violations.push(...teacherConflictViolations);
+    isValid = false;
+  } else {
+    addLog('✅ 조건 만족', 'success');
+  }
+  addLog('', 'info');
+
+  // 7. 중복 수업이나 누락된 수업은 없는가?
+  addLog('7️⃣ 중복/누락 수업 검증', 'info');
+  const duplicateMissingViolations = validateDuplicateMissingClasses(schedule, data, addLog);
+  if (duplicateMissingViolations.length > 0) {
+    violations.push(...duplicateMissingViolations);
+    isValid = false;
+  } else {
+    addLog('✅ 조건 만족', 'success');
+  }
+  addLog('', 'info');
+
+  // 최종 결과 출력
+  addLog('📊 디버깅 결과 요약', 'info');
+  if (isValid) {
+    addLog('🎉 모든 제약조건이 만족되었습니다!', 'success');
+  } else {
+    addLog(`❌ 총 ${violations.length}개의 제약조건 위반이 발견되었습니다.`, 'error');
+    addLog('위반된 항목들:', 'error');
+    violations.forEach((violation, index) => {
+      addLog(`  ${index + 1}. ${violation}`, 'error');
+    });
+  }
+
+  return { isValid, violations };
+};
+
+// 독립적 시간표 디버깅 함수 (새로 추가)
+export const debugTimetableIndependently = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): { isValid: boolean; violations: string[]; summary: any } => {
+  addLog('🔍 독립적 시간표 디버깅을 시작합니다...', 'info');
+  addLog('', 'info');
+
+  // 디버깅 실행
+  const result = debugTimetableConstraints(schedule, data, addLog);
+  
+  // 요약 정보 생성
+  const summary = {
+    totalClasses: Object.keys(schedule).length,
+    totalTeachers: data.teachers?.length || 0,
+    totalSubjects: data.subjects?.length || 0,
+    totalViolations: result.violations.length,
+    isValid: result.isValid,
+    violations: result.violations
+  };
+
+  addLog('', 'info');
+  addLog('📋 디버깅 요약 정보:', 'info');
+  addLog(`  • 총 학급 수: ${summary.totalClasses}`, 'info');
+  addLog(`  • 총 교사 수: ${summary.totalTeachers}`, 'info');
+  addLog(`  • 총 과목 수: ${summary.totalSubjects}`, 'info');
+  addLog(`  • 위반 사항 수: ${summary.totalViolations}`, 'info');
+  addLog(`  • 전체 상태: ${summary.isValid ? '✅ 정상' : '❌ 문제 발견'}`, summary.isValid ? 'success' : 'error');
+
+  return { ...result, summary };
+};
+
+// 1. 교사별 수업 가능 시간 검증
+const validateTeacherAvailableTimes = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): string[] => {
+  const violations: string[] = [];
+  const teachers = data.teachers || [];
+  const classNames = Object.keys(schedule);
+
+  teachers.forEach(teacher => {
+    if (!teacher.available_times || teacher.available_times.length === 0) {
+      return; // available_times가 설정되지 않은 경우 검증 제외
+    }
+
+    classNames.forEach(className => {
+      DAYS.forEach(day => {
+        if (schedule[className] && schedule[className][day]) {
+          Object.entries(schedule[className][day]).forEach(([periodStr, slot]) => {
+            if (slot && typeof slot === 'object' && 'teachers' in slot && slot.teachers.includes(teacher.name)) {
+              const period = parseInt(periodStr);
+              
+              // 교사 가능 시간 확인
+              const isAvailable = teacher.available_times!.some(([availableDay, availablePeriod]) => 
+                availableDay === day && availablePeriod === period
+              );
+              
+              if (!isAvailable) {
+                const violation = `${teacher.name} 교사가 ${className} ${day}요일 ${period}교시에 수업 중이지만, 해당 시간은 가능한 시간 목록에 없습니다.`;
+                violations.push(violation);
+                addLog(`❌ ${violation}`, 'error');
+              }
+            }
+          });
+        }
+      });
+    });
+  });
+
+  return violations;
+};
+
+// 2. 교사별 주간 수업 시수 검증
+const validateTeacherWeeklyHours = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): string[] => {
+  const violations: string[] = [];
+  const teachers = data.teachers || [];
+
+  teachers.forEach(teacher => {
+    const currentHours = getCurrentTeacherHours(schedule, teacher.name);
+    const maxHours = teacher.max_hours_per_week || teacher.maxHours || 22;
+    
+    if (currentHours > maxHours) {
+      const violation = `${teacher.name} 교사 시수 초과: ${currentHours}시간 > ${maxHours}시간`;
+      violations.push(violation);
+      addLog(`❌ ${violation}`, 'error');
+    }
+
+    // 학급별 시수 제한 확인
+    const classNames = Object.keys(schedule);
+    classNames.forEach(className => {
+      const classKey = convertClassNameToKey(className);
+      const classHoursLimit = teacher.weeklyHoursByGrade?.[classKey] || 0;
+      const currentClassHours = getCurrentTeacherHours(schedule, teacher.name, className);
+      
+      if (classHoursLimit > 0 && currentClassHours > classHoursLimit) {
+        const violation = `${teacher.name} 교사 ${className} 학급 시수 초과: ${currentClassHours}시간 > ${classHoursLimit}시간`;
+        violations.push(violation);
+        addLog(`❌ ${violation}`, 'error');
+      }
+    });
+  });
+
+  return violations;
+};
+
+// 3. 학급별 주간 수업 시수 검증
+const validateClassWeeklyHours = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): string[] => {
+  const violations: string[] = [];
+  const classNames = Object.keys(schedule);
+
+  classNames.forEach(className => {
+    const maxWeeklyHours = data.classWeeklyHours && data.classWeeklyHours[className];
+    
+    if (maxWeeklyHours !== undefined && maxWeeklyHours !== null) {
+      let currentHours = 0;
+      
+      DAYS.forEach(day => {
+        if (schedule[className] && schedule[className][day]) {
+          Object.values(schedule[className][day]).forEach(slot => {
+            if (slot && typeof slot === 'object' && 'subject' in slot) {
+              currentHours++;
+            }
+          });
+        }
+      });
+      
+      if (currentHours > maxWeeklyHours) {
+        const violation = `${className} 학급 주간 수업 시수 초과: ${currentHours}시간 > ${maxWeeklyHours}시간`;
+        violations.push(violation);
+        addLog(`❌ ${violation}`, 'error');
+      }
+    }
+  });
+
+  return violations;
+};
+
+// 4. 블록제 수업 연속 배정 검증
+const validateBlockPeriodPlacements = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): string[] => {
+  const violations: string[] = [];
+  const blockPeriodConstraints = data.constraints?.must?.filter(c => c.type === 'block_period_requirement') || [];
+
+  if (blockPeriodConstraints.length === 0) {
+    return violations;
+  }
+
+  const classNames = Object.keys(schedule);
+  
+  classNames.forEach(className => {
+    DAYS.forEach(day => {
+      if (schedule[className] && schedule[className][day]) {
+        const periods = Object.keys(schedule[className][day]).map(p => parseInt(p)).sort((a, b) => a - b);
+        
+        for (let i = 0; i < periods.length - 1; i++) {
+          const currentPeriod = periods[i];
+          const nextPeriod = periods[i + 1];
+          
+          const currentSlot = schedule[className][day][currentPeriod];
+          const nextSlot = schedule[className][day][nextPeriod];
+          
+          if (currentSlot && typeof currentSlot === 'object' && 'teachers' in currentSlot &&
+              nextSlot && typeof nextSlot === 'object' && 'teachers' in nextSlot) {
+            
+            // 블록제 교사 확인
+            const blockTeachers = blockPeriodConstraints.map(c => c.subject);
+            const currentTeachers = currentSlot.teachers;
+            const nextTeachers = nextSlot.teachers;
+            
+            const hasBlockTeacher = currentTeachers.some(teacher => blockTeachers.includes(teacher)) ||
+                                   nextTeachers.some(teacher => blockTeachers.includes(teacher));
+            
+            if (hasBlockTeacher && nextPeriod !== currentPeriod + 1) {
+              const violation = `${className} ${day}요일 ${currentPeriod}교시와 ${nextPeriod}교시에 블록제 교사가 배정되었지만 연속되지 않습니다.`;
+              violations.push(violation);
+              addLog(`❌ ${violation}`, 'error');
+            }
+          }
+        }
+      }
+    });
+  });
+
+  return violations;
+};
+
+// 5. 공동수업 조건 검증
+const validateCoTeachingConditions = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): string[] => {
+  const violations: string[] = [];
+  const coTeachingConstraints = data.constraints?.must?.filter(c => c.type === 'specific_teacher_co_teaching') || [];
+
+  if (coTeachingConstraints.length === 0) {
+    return violations;
+  }
+
+  coTeachingConstraints.forEach(constraint => {
+    const { mainTeacher, coTeachers, subject } = constraint;
+    
+    if (!mainTeacher || !coTeachers || coTeachers.length === 0) {
+      return;
+    }
+
+    const classNames = Object.keys(schedule);
+    let mainTeacherFound = false;
+    let coTeachingValid = false;
+
+    classNames.forEach(className => {
+      DAYS.forEach(day => {
+        if (schedule[className] && schedule[className][day]) {
+          Object.entries(schedule[className][day]).forEach(([periodStr, slot]) => {
+            if (slot && typeof slot === 'object' && 'teachers' in slot) {
+              const teachers = slot.teachers;
+              
+              // 주교사가 해당 과목을 가르치는지 확인
+              if (teachers.includes(mainTeacher) && (!subject || slot.subject === subject)) {
+                mainTeacherFound = true;
+                
+                // 부교사가 함께 배정되었는지 확인
+                const hasCoTeacher = coTeachers.some(coTeacher => teachers.includes(coTeacher));
+                if (hasCoTeacher) {
+                  coTeachingValid = true;
+                }
+              }
+            }
+          });
+        }
+      });
+    });
+
+    if (mainTeacherFound && !coTeachingValid) {
+      const violation = `${mainTeacher} 교사의 ${subject || '수업'}에 공동수업 부교사(${coTeachers.join(', ')})가 배정되지 않았습니다.`;
+      violations.push(violation);
+      addLog(`❌ ${violation}`, 'error');
+    }
+  });
+
+  return violations;
+};
+
+// 6. 교사 동시 배정 검증
+const validateTeacherSimultaneousAssignment = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): string[] => {
+  const violations: string[] = [];
+  const teachers = data.teachers || [];
+
+  teachers.forEach(teacher => {
+    const teacherSlots: { day: string; period: number; className: string }[] = [];
+    
+    const classNames = Object.keys(schedule);
+    classNames.forEach(className => {
+      DAYS.forEach(day => {
+        if (schedule[className] && schedule[className][day]) {
+          Object.entries(schedule[className][day]).forEach(([periodStr, slot]) => {
+            if (slot && typeof slot === 'object' && 'teachers' in slot && slot.teachers.includes(teacher.name)) {
+              teacherSlots.push({
+                day,
+                period: parseInt(periodStr),
+                className
+              });
+            }
+          });
+        }
+      });
+    });
+
+    // 같은 시간에 여러 학급에서 수업하는지 확인
+    const timeSlots = new Map<string, string[]>();
+    teacherSlots.forEach(slot => {
+      const timeKey = `${slot.day}-${slot.period}`;
+      if (!timeSlots.has(timeKey)) {
+        timeSlots.set(timeKey, []);
+      }
+      timeSlots.get(timeKey)!.push(slot.className);
+    });
+
+    timeSlots.forEach((classes, timeKey) => {
+      if (classes.length > 1) {
+        const [day, period] = timeKey.split('-');
+        const violation = `${teacher.name} 교사가 ${day}요일 ${period}교시에 ${classes.join(', ')} 학급에서 동시에 수업 중입니다.`;
+        violations.push(violation);
+        addLog(`❌ ${violation}`, 'error');
+      }
+    });
+  });
+
+  return violations;
+};
+
+// 7. 중복/누락 수업 검증
+const validateDuplicateMissingClasses = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): string[] => {
+  const violations: string[] = [];
+  const subjects = data.subjects || [];
+  const classNames = Object.keys(schedule);
+
+  // 각 학급별로 과목별 배정 현황 확인
+  classNames.forEach(className => {
+    const subjectCounts: Record<string, number> = {};
+    
+    DAYS.forEach(day => {
+      if (schedule[className] && schedule[className][day]) {
+        Object.values(schedule[className][day]).forEach(slot => {
+          if (slot && typeof slot === 'object' && 'subject' in slot) {
+            const subject = slot.subject;
+            subjectCounts[subject] = (subjectCounts[subject] || 0) + 1;
+          }
+        });
+      }
+    });
+
+    // 과목별 목표 시수와 비교
+    subjects.forEach(subject => {
+      const targetHours = subject.weekly_hours || 1;
+      const actualHours = subjectCounts[subject.name] || 0;
+      
+      if (actualHours > targetHours) {
+        const violation = `${className} ${subject.name} 과목 중복 배정: ${actualHours}시간 > ${targetHours}시간`;
+        violations.push(violation);
+        addLog(`❌ ${violation}`, 'error');
+      } else if (actualHours < targetHours) {
+        const violation = `${className} ${subject.name} 과목 누락: ${actualHours}시간 < ${targetHours}시간`;
+        violations.push(violation);
+        addLog(`❌ ${violation}`, 'error');
+      }
+    });
+  });
+
+  return violations;
+};

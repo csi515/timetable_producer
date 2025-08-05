@@ -1,7 +1,7 @@
 import { Schedule, TimetableData, Teacher, PlacementPlan, TeacherHoursTracker, GenerationLog, ScheduleSlot } from '../types';
 import { DAYS, generateClassNames, getDefaultWeeklyHours, getCurrentSubjectHours, initializeTeacherHours, convertClassNameToKey, getCurrentTeacherHours } from '../utils/helpers';
 import { findAvailableSlots } from './slotFinder';
-import { validateSlotPlacement, checkTeacherUnavailable, validateCoTeachingConstraints, checkSubjectFixedOnly, checkTeacherTimeConflict, validateScheduleTeacherConflicts, checkBlockPeriodRequirement, placeBlockPeriodSubject, validateBlockPeriodConstraints, validateAllConstraints, validateAllConstraintsCompliance, generateConstraintViolationReport } from './constraints';
+import { validateSlotPlacement, checkTeacherUnavailable, validateCoTeachingConstraints, checkSubjectFixedOnly, checkTeacherTimeConflict, validateScheduleTeacherConflicts, checkBlockPeriodRequirement, placeBlockPeriodSubject, validateBlockPeriodConstraints, validateAllConstraints, validateAllConstraintsCompliance, generateConstraintViolationReport, debugTimetableConstraints } from './constraints';
 import { applyFixedClasses } from './fixedClasses';
 import { processCoTeachingConstraints } from './coTeaching';
 import { calculateScheduleStats } from '../utils/statistics';
@@ -532,6 +532,14 @@ export const generateTimetable = async (
   }
   addLog('✅ 모든 제약조건이 준수되었습니다.', 'success');
   setProgress?.(87);
+
+  // 11단계: 시간표 생성 결과 전체 디버깅
+  addLog('11단계: 시간표 생성 결과 전체 디버깅을 수행합니다.', 'info');
+  const debugResult = debugTimetableConstraints(schedule, data, addLog);
+  if (!debugResult.isValid) {
+    addLog('⚠️ 디버깅 과정에서 추가적인 문제점이 발견되었습니다.', 'warning');
+  }
+  setProgress?.(95);
 
   // 12단계: 통계 계산
   addLog('12단계: 통계를 계산합니다.', 'info');
