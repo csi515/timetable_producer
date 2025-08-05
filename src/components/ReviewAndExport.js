@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
+import TeacherTimetable from './TeacherTimetable';
+import ClassTimetable from './ClassTimetable';
 
 function ReviewAndExport({ data, updateData, prevStep }) {
   const [viewMode, setViewMode] = useState('class'); // 'class' or 'teacher'
