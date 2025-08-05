@@ -176,6 +176,13 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
       hasTime: false
     },
     {
+      id: 'consecutive_teaching_limit',
+      name: '연속 수업 제한 (권장사항)',
+      description: '교사의 연속 수업을 2시간으로 제한하여 피로도 감소 (권장사항)',
+      hasSubject: false,
+      hasTime: false
+    },
+    {
       id: 'teacher_unavailable_time',
       name: '교사 수업 불가 시간',
       description: '특정 교사의 특정 요일·교시 수업 불가능',
@@ -550,8 +557,9 @@ function ConstraintSettings({ data, updateData, nextStep, prevStep }) {
         { id: 6, type: 'space_constraint', description: '특별실 공간 제약' }
       ],
       optional: [
-        { id: 7, type: 'fourth_period_distribution', description: '4교시 수업 분산 제약' },
-        { id: 8, type: 'class_daily_subject_once', subject: '체육', description: '체육 하루 1회 제한' }
+        { id: 7, type: 'consecutive_teaching_limit', description: '연속 수업 제한 (권장사항) - 교사 피로도 감소' },
+        { id: 8, type: 'fourth_period_distribution', description: '4교시 수업 분산 제약' },
+        { id: 9, type: 'class_daily_subject_once', subject: '체육', description: '체육 하루 1회 제한' }
       ]
     };
     

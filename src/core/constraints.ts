@@ -1,6 +1,62 @@
 import { Schedule, Teacher, ValidationResult, TimetableData } from '../types';
 import { DAYS, convertClassNameToKey, getCurrentTeacherHours } from '../utils/helpers';
 
+// 연속 수업 제한 검증 (권장사항)
+export const checkConsecutiveTeachingLimit = (
+  schedule: Schedule,
+  teacherName: string,
+  day: string,
+  period: number,
+  maxConsecutiveHours: number = 2
+): ValidationResult => {
+  // 해당 교사의 해당 날짜 수업 시간들을 수집
+  const teacherPeriods: number[] = [];
+  
+  for (const className of Object.keys(schedule)) {
+    if (schedule[className] && schedule[className][day]) {
+      for (let p = 1; p <= Object.keys(schedule[className][day]).length; p++) {
+        const slot = schedule[className][day][p - 1];
+        if (slot && typeof slot === 'object' && 'teachers' in slot && Array.isArray(slot.teachers)) {
+          if (slot.teachers.includes(teacherName)) {
+            teacherPeriods.push(p);
+          }
+        } else if (typeof slot === 'string' && slot.includes(teacherName)) {
+          teacherPeriods.push(p);
+        }
+      }
+    }
+  }
+  
+  // 새로운 교시 추가
+  teacherPeriods.push(period);
+  teacherPeriods.sort((a, b) => a - b);
+  
+  // 연속 수업 시간 계산
+  let maxConsecutive = 1;
+  let currentConsecutive = 1;
+  
+  for (let i = 1; i < teacherPeriods.length; i++) {
+    if (teacherPeriods[i] === teacherPeriods[i - 1] + 1) {
+      currentConsecutive++;
+      maxConsecutive = Math.max(maxConsecutive, currentConsecutive);
+    } else {
+      currentConsecutive = 1;
+    }
+  }
+  
+  if (maxConsecutive > maxConsecutiveHours) {
+    return {
+      allowed: false,
+      reason: 'consecutive_teaching_limit',
+      message: `${teacherName} 교사의 ${day}요일 연속 수업이 ${maxConsecutive}시간으로 제한(${maxConsecutiveHours}시간)을 초과합니다.`,
+      current: maxConsecutive,
+      max: maxConsecutiveHours
+    };
+  }
+  
+  return { allowed: true };
+};
+
 // 교사 시간 충돌 검사 (절대 불가능)
 export const checkTeacherTimeConflict = (
   schedule: Schedule,
@@ -789,40 +845,39 @@ export const validateAllConstraints = (
   data: TimetableData,
   addLog: (message: string, type?: string) => void
 ): ValidationResult => {
-  // 1. 교사별 수업 가능 시간 검증
-  const teacherTimeCheck = validateTeacherAvailableTime(teacher, day, period, addLog);
-  if (!teacherTimeCheck.allowed) {
-    return teacherTimeCheck;
+  // 1. 교사 시간 충돌 검사 (절대 불가능)
+  const teacherConflict = checkTeacherTimeConflict(schedule, teacher.name, day, period, className);
+  if (!teacherConflict.allowed) {
+    addLog(`❌ 교사 시간 충돌: ${teacherConflict.message}`, 'error');
+    return teacherConflict;
   }
 
-  // 2. 교사 시간 충돌 검증
-  const teacherConflictCheck = checkTeacherTimeConflict(schedule, teacher.name, day, period, className);
-  if (!teacherConflictCheck.allowed) {
-    addLog(`❌ ${teacherConflictCheck.message}`, 'error');
-    return teacherConflictCheck;
+  // 2. 교사 수업 불가 시간 검사 (절대 불가능)
+  const teacherUnavailable = checkTeacherUnavailable(teacher, day, period);
+  if (!teacherUnavailable.allowed) {
+    addLog(`❌ 교사 수업 불가 시간: ${teacher.name} 교사는 ${day}요일 ${period}교시에 수업할 수 없습니다.`, 'error');
+    return teacherUnavailable;
   }
 
-  // 3. 학급별 주간 수업 시수 검증
-  const classHoursCheck = validateClassWeeklyHoursStrict(className, schedule, data, addLog);
-  if (!classHoursCheck.allowed) {
-    return classHoursCheck;
+  // 3. 연속 수업 제한 검사 (권장사항)
+  const consecutiveLimit = checkConsecutiveTeachingLimit(schedule, teacher.name, day, period, 2);
+  if (!consecutiveLimit.allowed) {
+    addLog(`⚠️ 연속 수업 제한: ${consecutiveLimit.message}`, 'warning');
+    // 권장사항이므로 경고만 표시하고 계속 진행
   }
 
-  // 4. 블록제 수업 제약조건 검증
-  const blockCheck = checkBlockPeriodRequirement(schedule, className, day, period, teacher.name, data, subject);
-  if (!blockCheck.allowed) {
-    addLog(`❌ ${blockCheck.message}`, 'error');
-    return blockCheck;
+  // 4. 학급별 주간 수업 시수 제한 검사
+  const classWeeklyHours = validateClassWeeklyHoursStrict(className, schedule, data, addLog);
+  if (!classWeeklyHours.allowed) {
+    addLog(`❌ 학급 주간 시수 초과: ${classWeeklyHours.message}`, 'error');
+    return classWeeklyHours;
   }
 
-  // 5. 슬롯 배치 기본 검증
-  const slotValid = validateSlotPlacement(schedule, className, day, period, teacher, subject, data, addLog);
-  if (!slotValid) {
-    return { 
-      allowed: false, 
-      reason: 'slot_placement_failed',
-      message: `${className} ${day}요일 ${period}교시 슬롯 배치 검증 실패`
-    };
+  // 5. 교사별 학급 시수 제한 검사
+  const teacherClassHours = checkTeacherClassHoursLimit(teacher, className, schedule);
+  if (!teacherClassHours.allowed) {
+    addLog(`❌ 교사 학급 시수 초과: ${teacherClassHours.message}`, 'error');
+    return teacherClassHours;
   }
 
   return { allowed: true };
@@ -1007,102 +1062,65 @@ export const debugTimetableConstraints = (
   data: TimetableData,
   addLog: (message: string, type?: string) => void
 ): { isValid: boolean; violations: string[] } => {
-  const violations: string[] = [];
-  let isValid = true;
+  addLog('🔍 시간표 제약조건 디버깅을 시작합니다...', 'info');
   
-  addLog('🔍 시간표 생성 결과 전체 디버깅을 시작합니다...', 'info');
-  addLog('', 'info');
-
-  // 1. 교사별 수업 가능 시간 외 수업이 배정되지 않았는가?
+  const violations: string[] = [];
+  
+  // 1. 교사별 수업 가능 시간 검증
   addLog('1️⃣ 교사별 수업 가능 시간 검증', 'info');
-  const teacherTimeViolations = validateTeacherAvailableTimes(schedule, data, addLog);
-  if (teacherTimeViolations.length > 0) {
-    violations.push(...teacherTimeViolations);
-    isValid = false;
-  } else {
-    addLog('✅ 조건 만족', 'success');
-  }
-  addLog('', 'info');
-
-  // 2. 교사별 주간 수업 시수가 사전에 설정한 최대치를 초과하지 않았는가?
+  const teacherAvailableViolations = validateTeacherAvailableTimes(schedule, data, addLog);
+  violations.push(...teacherAvailableViolations);
+  
+  // 2. 교사별 주간 수업 시수 검증
   addLog('2️⃣ 교사별 주간 수업 시수 검증', 'info');
   const teacherHoursViolations = validateTeacherWeeklyHours(schedule, data, addLog);
-  if (teacherHoursViolations.length > 0) {
-    violations.push(...teacherHoursViolations);
-    isValid = false;
-  } else {
-    addLog('✅ 조건 만족', 'success');
-  }
-  addLog('', 'info');
-
-  // 3. 학급별 주간 수업 시수가 정확하게 배정되었는가?
+  violations.push(...teacherHoursViolations);
+  
+  // 3. 학급별 주간 수업 시수 검증
   addLog('3️⃣ 학급별 주간 수업 시수 검증', 'info');
   const classHoursViolations = validateClassWeeklyHours(schedule, data, addLog);
-  if (classHoursViolations.length > 0) {
-    violations.push(...classHoursViolations);
-    isValid = false;
-  } else {
-    addLog('✅ 조건 만족', 'success');
-  }
-  addLog('', 'info');
-
-  // 4. 블록제 수업이 올바르게 연속 2교시로 배정되었는가?
-  addLog('4️⃣ 블록제 수업 연속 배정 검증', 'info');
-  const blockPeriodViolations = validateBlockPeriodPlacements(schedule, data, addLog);
-  if (blockPeriodViolations.length > 0) {
-    violations.push(...blockPeriodViolations);
-    isValid = false;
-  } else {
-    addLog('✅ 조건 만족', 'success');
-  }
-  addLog('', 'info');
-
-  // 5. 공동수업 조건이 지켜졌는가?
-  addLog('5️⃣ 공동수업 조건 검증', 'info');
+  violations.push(...classHoursViolations);
+  
+  // 4. 연속 수업 제한 검증 (권장사항)
+  addLog('4️⃣ 연속 수업 제한 검증 (권장사항)', 'info');
+  const consecutiveViolations = validateConsecutiveTeachingLimits(schedule, data, addLog);
+  violations.push(...consecutiveViolations);
+  
+  // 5. 블록제 수업 연속 배정 검증
+  addLog('5️⃣ 블록제 수업 연속 배정 검증', 'info');
+  const blockViolations = validateBlockPeriodPlacements(schedule, data, addLog);
+  violations.push(...blockViolations);
+  
+  // 6. 공동수업 조건 검증
+  addLog('6️⃣ 공동수업 조건 검증', 'info');
   const coTeachingViolations = validateCoTeachingConditions(schedule, data, addLog);
-  if (coTeachingViolations.length > 0) {
-    violations.push(...coTeachingViolations);
-    isValid = false;
-  } else {
-    addLog('✅ 조건 만족', 'success');
-  }
-  addLog('', 'info');
-
-  // 6. 동일 시간에 한 교사가 두 반에 동시에 배정되어 있지는 않은가?
-  addLog('6️⃣ 교사 동시 배정 검증', 'info');
-  const teacherConflictViolations = validateTeacherSimultaneousAssignment(schedule, data, addLog);
-  if (teacherConflictViolations.length > 0) {
-    violations.push(...teacherConflictViolations);
-    isValid = false;
-  } else {
-    addLog('✅ 조건 만족', 'success');
-  }
-  addLog('', 'info');
-
-  // 7. 중복 수업이나 누락된 수업은 없는가?
-  addLog('7️⃣ 중복/누락 수업 검증', 'info');
-  const duplicateMissingViolations = validateDuplicateMissingClasses(schedule, data, addLog);
-  if (duplicateMissingViolations.length > 0) {
-    violations.push(...duplicateMissingViolations);
-    isValid = false;
-  } else {
-    addLog('✅ 조건 만족', 'success');
-  }
-  addLog('', 'info');
-
-  // 최종 결과 출력
+  violations.push(...coTeachingViolations);
+  
+  // 7. 교사 동시 배정 검증
+  addLog('7️⃣ 교사 동시 배정 검증', 'info');
+  const simultaneousViolations = validateTeacherSimultaneousAssignment(schedule, data, addLog);
+  violations.push(...simultaneousViolations);
+  
+  // 8. 중복/누락 수업 검증
+  addLog('8️⃣ 중복/누락 수업 검증', 'info');
+  const duplicateViolations = validateDuplicateMissingClasses(schedule, data, addLog);
+  violations.push(...duplicateViolations);
+  
+  // 결과 요약
   addLog('📊 디버깅 결과 요약', 'info');
-  if (isValid) {
-    addLog('🎉 모든 제약조건이 만족되었습니다!', 'success');
+  if (violations.length === 0) {
+    addLog('✅ 모든 제약조건이 올바르게 준수되었습니다.', 'success');
   } else {
     addLog(`❌ 총 ${violations.length}개의 제약조건 위반이 발견되었습니다.`, 'error');
-    addLog('위반된 항목들:', 'error');
     violations.forEach((violation, index) => {
-      addLog(`  ${index + 1}. ${violation}`, 'error');
+      addLog(`   ${index + 1}. ${violation}`, 'error');
     });
   }
-
-  return { isValid, violations };
+  
+  return {
+    isValid: violations.length === 0,
+    violations
+  };
 };
 
 // 독립적 시간표 디버깅 함수 (새로 추가)
@@ -1250,6 +1268,69 @@ const validateClassWeeklyHours = (
     }
   });
 
+  return violations;
+};
+
+// 연속 수업 제한 검증 (권장사항)
+const validateConsecutiveTeachingLimits = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): string[] => {
+  const violations: string[] = [];
+  const maxConsecutiveHours = 2; // 기본값: 2시간
+  
+  // 모든 교사에 대해 검사
+  data.teachers.forEach(teacher => {
+    DAYS.forEach(day => {
+      const teacherPeriods: number[] = [];
+      
+      // 해당 교사의 해당 날짜 수업 시간들을 수집
+      Object.keys(schedule).forEach(className => {
+        if (schedule[className] && schedule[className][day]) {
+          for (let p = 1; p <= Object.keys(schedule[className][day]).length; p++) {
+            const slot = schedule[className][day][p - 1];
+            if (slot && typeof slot === 'object' && 'teachers' in slot && Array.isArray(slot.teachers)) {
+              if (slot.teachers.includes(teacher.name)) {
+                teacherPeriods.push(p);
+              }
+            } else if (typeof slot === 'string' && slot.includes(teacher.name)) {
+              teacherPeriods.push(p);
+            }
+          }
+        }
+      });
+      
+      // 연속 수업 시간 계산
+      if (teacherPeriods.length > 0) {
+        teacherPeriods.sort((a, b) => a - b);
+        let maxConsecutive = 1;
+        let currentConsecutive = 1;
+        
+        for (let i = 1; i < teacherPeriods.length; i++) {
+          if (teacherPeriods[i] === teacherPeriods[i - 1] + 1) {
+            currentConsecutive++;
+            maxConsecutive = Math.max(maxConsecutive, currentConsecutive);
+          } else {
+            currentConsecutive = 1;
+          }
+        }
+        
+        if (maxConsecutive > maxConsecutiveHours) {
+          const violation = `${teacher.name} 교사의 ${day}요일 연속 수업이 ${maxConsecutive}시간으로 제한(${maxConsecutiveHours}시간)을 초과합니다.`;
+          violations.push(violation);
+          addLog(`⚠️ ${violation}`, 'warning');
+        }
+      }
+    });
+  });
+  
+  if (violations.length === 0) {
+    addLog('✅ 연속 수업 제한 준수 완료', 'success');
+  } else {
+    addLog(`⚠️ 연속 수업 제한 위반: ${violations.length}건 발견 (권장사항)`, 'warning');
+  }
+  
   return violations;
 };
 
