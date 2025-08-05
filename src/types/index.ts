@@ -224,6 +224,53 @@ export interface PlacementHistory {
   subjectId: string;
   teachers: string[];
   timestamp: Date;
+  slotScore?: number; // 슬롯 점수 (백트래킹 시 사용)
+  currentHours?: number; // 현재 배정된 시수
+  targetHours?: number; // 목표 시수
+}
+
+// 후보 슬롯 타입
+export interface CandidateSlot {
+  day: string;
+  period: number;
+  score: number;
+  isBlockSlot: boolean;
+  nextPeriod?: number; // 블록제 슬롯의 경우 다음 교시
+}
+
+// 제약조건 위반 기록
+export interface ConstraintViolation {
+  subjectId: string;
+  classId: string;
+  availableSlots: number;
+  timestamp: Date;
+  reason: 'no_available_slots' | 'constraint_conflict' | 'teacher_unavailable' | 'time_conflict';
+  details?: string;
+}
+
+// 성능 메트릭
+export interface PerformanceMetrics {
+  startTime: number;
+  totalPlacementTime: number;
+  averagePlacementTime: number;
+  cacheHitRate?: number;
+  memoryUsage?: number;
+}
+
+// 실패 분석 결과
+export interface FailureAnalysis {
+  totalAttempts: number;
+  successfulPlacements: number;
+  failedPlacements: number;
+  backtrackCount: number;
+  constraintViolations: ConstraintViolation[];
+  performanceMetrics: PerformanceMetrics;
+  topFailureReasons?: Array<{
+    subjectId: string;
+    classId: string;
+    failureCount: number;
+    reason: string;
+  }>;
 }
 
 // 제약조건 검증 함수 타입
@@ -233,4 +280,7 @@ export interface ConstraintChecker {
   isTeacherWeeklyHoursWithinLimit: (teacherId: string) => ValidationResult;
   isBlockSubjectValid: (subjectId: string, day: string, period: number) => ValidationResult;
   isCoTeachingValid: (subjectId: string, teacher1: string, teacher2: string, day: string, period: number) => ValidationResult;
+  isTeacherConflictFree: (teacherId: string, day: string, period: number, excludeClassId?: string) => ValidationResult;
+  isClassWeeklyHoursWithinLimit: (classId: string) => ValidationResult;
+  validatePlacement: (classId: string, day: string, period: number, subjectId: string, teachers: string[]) => ValidationResult;
 } 

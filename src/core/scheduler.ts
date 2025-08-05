@@ -7,6 +7,7 @@ import { processCoTeachingConstraints } from './coTeaching';
 import { calculateScheduleStats } from '../utils/statistics';
 import { findAvailableTeachersForSubject } from './teacherAssignment';
 import { fillEmptySlots } from './emptySlotFiller';
+import { NewScheduler } from './newScheduler';
 
 // 스케줄 초기화
 export const initializeSchedule = (data: TimetableData): Schedule => {
@@ -418,43 +419,45 @@ export const executePlacementPlan = (
 
 
 // 메인 시간표 생성 함수
-import { NewScheduler } from './newScheduler';
-
 export const generateTimetable = async (
   data: TimetableData,
   addLog: (message: string, type?: string) => void,
   setProgress?: (progress: number) => void
-): Promise<{ schedule: Schedule; teacherHours: TeacherHoursTracker; stats: any }> => {
-  // 새로운 우선순위 기반 스케줄러 사용
+): Promise<{ schedule: Schedule; teacherHours: TeacherHoursTracker; stats: any; failureAnalysis?: any }> => {
   const newScheduler = new NewScheduler(data);
   
-  // 시간표 생성 가능성 사전 검사
+  // 사전 가능성 검사
   const feasibilityCheck = newScheduler.checkFeasibility(addLog);
   if (!feasibilityCheck.isFeasible) {
     addLog('❌ 시간표 생성이 불가능합니다. 제약조건을 확인해주세요.', 'error');
-    return {
-      schedule: {},
-      teacherHours: {},
-      stats: {}
-    };
+    addLog('발견된 문제점들:', 'error');
+    feasibilityCheck.issues.forEach((issue, index) => {
+      addLog(`  ${index + 1}. ${issue}`, 'error');
+    });
+    return { schedule: {}, teacherHours: {}, stats: {}, failureAnalysis: null };
   }
 
-  // 새로운 스케줄러로 시간표 생성
+  // 향상된 스케줄러로 시간표 생성
   const result = await newScheduler.generateTimetable(addLog, setProgress);
   
   if (!result.success) {
     addLog('❌ 시간표 생성에 실패했습니다.', 'error');
-    return {
-      schedule: result.schedule,
-      teacherHours: result.teacherHours,
-      stats: result.stats
+    addLog(`실패 원인: ${result.message}`, 'error');
+    return { 
+      schedule: result.schedule, 
+      teacherHours: result.teacherHours, 
+      stats: result.stats,
+      failureAnalysis: result.failureAnalysis
     };
   }
 
-  return {
-    schedule: result.schedule,
-    teacherHours: result.teacherHours,
-    stats: result.stats
+  addLog('✅ 시간표 생성이 완료되었습니다!', 'success');
+  
+  return { 
+    schedule: result.schedule, 
+    teacherHours: result.teacherHours, 
+    stats: result.stats,
+    failureAnalysis: result.failureAnalysis
   };
 };
 

@@ -42,11 +42,13 @@ export const useTimetableGeneration = (data: TimetableData, updateData: (key: st
       setGenerationResults({
         schedule: result.schedule,
         teacherHours: result.teacherHours,
-        stats: result.stats
+        stats: result.stats,
+        failureAnalysis: result.failureAnalysis
       });
       
       updateData('schedule', result.schedule);
       updateData('teacherHours', result.teacherHours);
+      updateData('failureAnalysis', result.failureAnalysis);
       
       addLog('✅ 시간표 생성이 완료되었습니다!', 'success');
     } catch (error) {
@@ -90,11 +92,13 @@ export const useTimetableGeneration = (data: TimetableData, updateData: (key: st
         setGenerationResults({
           schedule: result.schedule,
           teacherHours: result.teacherHours,
-          stats: result.stats
+          stats: result.stats,
+          failureAnalysis: result.failureAnalysis
         });
         
         updateData('schedule', result.schedule);
         updateData('teacherHours', result.teacherHours);
+        updateData('failureAnalysis', result.failureAnalysis);
         
         addLog(`✅ 자동 생성 완료! 최고 채움률: ${result.bestFillRate}%`, 'success');
       } else {
@@ -149,12 +153,14 @@ export const useTimetableGeneration = (data: TimetableData, updateData: (key: st
       const updatedResults = {
         schedule: currentSchedule,
         teacherHours: currentTeacherHours,
-        stats: stats
+        stats: stats,
+        failureAnalysis: null // 응급모드에서는 실패 분석 없음
       };
       
       setGenerationResults(updatedResults);
       updateData('schedule', currentSchedule);
       updateData('teacherHours', currentTeacherHours);
+      updateData('failureAnalysis', null);
       
       setGenerationProgress(100);
       
@@ -176,6 +182,7 @@ export const useTimetableGeneration = (data: TimetableData, updateData: (key: st
     clearLog();
     updateData('schedule', {});
     updateData('teacherHours', {});
+    updateData('failureAnalysis', null);
     addLog('🗑️ 스케줄이 초기화되었습니다.', 'info');
   };
 

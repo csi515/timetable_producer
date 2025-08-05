@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import TeacherTimetable from './TeacherTimetable';
 import ClassTimetable from './ClassTimetable';
+import FailureAnalysis from './FailureAnalysis';
 
 function ReviewAndExportNew({ data, updateData, prevStep }) {
   const [viewMode, setViewMode] = useState('teacher'); // 'class' or 'teacher'
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedTeacher, setSelectedTeacher] = useState('');
+  const [showFailureAnalysis, setShowFailureAnalysis] = useState(false);
 
   const days = ['월', '화', '수', '목', '금'];
 
@@ -399,6 +401,46 @@ function ReviewAndExportNew({ data, updateData, prevStep }) {
             <TeacherTimetable data={data} schedule={data.schedule} />
           ) : null}
         </div>
+
+        {/* 실패 분석 섹션 */}
+        {data.failureAnalysis && (
+          <div className="mb-6">
+            <div className="bg-white border border-gray-200 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">🔍 실패 분석</h3>
+                <button
+                  onClick={() => setShowFailureAnalysis(!showFailureAnalysis)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                >
+                  {showFailureAnalysis ? '숨기기' : '자세히 보기'}
+                </button>
+              </div>
+              
+              {showFailureAnalysis ? (
+                <FailureAnalysis failureAnalysis={data.failureAnalysis} data={data} />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">{data.failureAnalysis.totalAttempts}</div>
+                    <div className="text-sm text-blue-700">총 시도 횟수</div>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">{data.failureAnalysis.successfulPlacements}</div>
+                    <div className="text-sm text-green-700">성공한 배치</div>
+                  </div>
+                  <div className="bg-red-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-red-600">{data.failureAnalysis.failedPlacements}</div>
+                    <div className="text-sm text-red-700">실패한 배치</div>
+                  </div>
+                  <div className="bg-yellow-50 p-4 rounded-lg">
+                    <div className="text-2xl font-bold text-yellow-600">{data.failureAnalysis.backtrackCount}</div>
+                    <div className="text-sm text-yellow-700">백트래킹 횟수</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* 내보내기 버튼 */}
         <div className="bg-white border border-gray-200 rounded-lg p-6">

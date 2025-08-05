@@ -5,7 +5,7 @@ import {
   TimetableData,
   Schedule
 } from '../types';
-import { PriorityScheduler } from './priorityScheduler';
+import { EnhancedScheduler } from './enhancedScheduler';
 import { PostValidator } from './postValidator';
 import { calculateScheduleStats } from '../utils/statistics';
 
@@ -14,7 +14,7 @@ export class NewScheduler {
   private data: TimetableData;
   private maxBacktrackSteps: number;
 
-  constructor(data: TimetableData, maxBacktrackSteps: number = 1000) {
+  constructor(data: TimetableData, maxBacktrackSteps: number = 2000) {
     this.data = data;
     this.maxBacktrackSteps = maxBacktrackSteps;
   }
@@ -29,8 +29,9 @@ export class NewScheduler {
     teacherHours: TeacherHoursTracker;
     stats: any;
     message: string;
+    failureAnalysis?: any;
   }> {
-    addLog('🚀 새로운 우선순위 기반 시간표 생성을 시작합니다.', 'info');
+    addLog('🚀 개선된 우선순위 기반 시간표 생성을 시작합니다.', 'info');
     setProgress?.(10);
 
     try {
@@ -49,10 +50,10 @@ export class NewScheduler {
       }
       setProgress?.(20);
 
-      // 2단계: 우선순위 기반 배치 알고리즘 실행
-      addLog('2단계: 우선순위 기반 배치 알고리즘을 실행합니다.', 'info');
-      const priorityScheduler = new PriorityScheduler(this.data, this.maxBacktrackSteps);
-      const placementResult = priorityScheduler.generateTimetable(addLog);
+      // 2단계: 향상된 우선순위 기반 배치 알고리즘 실행
+      addLog('2단계: 향상된 우선순위 기반 배치 알고리즘을 실행합니다.', 'info');
+      const enhancedScheduler = new EnhancedScheduler(this.data, this.maxBacktrackSteps);
+      const placementResult = enhancedScheduler.generateTimetable(addLog);
       
       if (!placementResult.success) {
         addLog('❌ 조건을 만족하는 시간표를 만들 수 없습니다.', 'error');
@@ -61,7 +62,8 @@ export class NewScheduler {
           schedule: this.convertToLegacySchedule(placementResult.schedule),
           teacherHours: placementResult.teacherHours,
           stats: {},
-          message: placementResult.message
+          message: placementResult.message,
+          failureAnalysis: placementResult.failureAnalysis
         };
       }
       setProgress?.(70);
@@ -89,7 +91,8 @@ export class NewScheduler {
           schedule: this.convertToLegacySchedule(placementResult.schedule),
           teacherHours: placementResult.teacherHours,
           stats: {},
-          message: '최종 검증에 실패했습니다. 제약조건을 확인해주세요.'
+          message: '최종 검증에 실패했습니다. 제약조건을 확인해주세요.',
+          failureAnalysis: placementResult.failureAnalysis
         };
       }
       setProgress?.(90);
@@ -109,7 +112,8 @@ export class NewScheduler {
         schedule: this.convertToLegacySchedule(placementResult.schedule),
         teacherHours: placementResult.teacherHours,
         stats,
-        message: '시간표가 성공적으로 생성되었습니다.'
+        message: '시간표가 성공적으로 생성되었습니다.',
+        failureAnalysis: placementResult.failureAnalysis
       };
 
     } catch (error) {
