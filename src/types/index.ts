@@ -19,6 +19,7 @@ export interface Teacher {
   name: string;
   subjects: string[];
   unavailable: [string, number][]; // [day, period]
+  available_times?: [string, number][]; // [day, period] - 교사가 수업할 수 있는 시간만 지정
   allow_parallel: boolean;
   co_teaching_with: string;
   maxHours: number;

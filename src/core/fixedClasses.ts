@@ -1,4 +1,5 @@
 import { Schedule, FixedClass, TimetableData } from '../types';
+import { validateAllConstraints } from './constraints';
 
 // 고정 수업 적용 함수
 export const applyFixedClasses = (
@@ -34,6 +35,16 @@ export const applyFixedClasses = (
       const slotIndex = period - 1;
       if (slotIndex >= 0 && slotIndex < Object.keys(schedule[className][day]).length && 
           (schedule[className][day][slotIndex] === '' || schedule[className][day][slotIndex] === undefined)) {
+        
+        // 고정 수업 배치 전 제약조건 검증
+        const teacherObj = data.teachers?.find(t => t.name === teacher);
+        if (teacherObj) {
+          const constraintCheck = validateAllConstraints(schedule, className, day, period, teacherObj, subject, data, addLog);
+          if (!constraintCheck.allowed) {
+            addLog(`❌ 고정 수업 배치 - 제약조건 위반으로 배치 불가: ${constraintCheck.message}`, 'error');
+            return;
+          }
+        }
         
         // 공동수업 여부 확인 (coTeachers 배열이 있고 비어있지 않은 경우)
         const isCoTeaching = coTeachers && coTeachers.length > 0;

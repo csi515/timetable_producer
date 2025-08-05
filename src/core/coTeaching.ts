@@ -1,6 +1,6 @@
 import { Schedule, Teacher, TimetableData, CoTeachingConstraint } from '../types';
 import { findAvailableSlots } from './slotFinder';
-import { validateSlotPlacement } from './constraints';
+import { validateSlotPlacement, validateAllConstraints } from './constraints';
 
 // 공동수업 제약조건 처리 (주교사의 모든 수업에 부교사 자동 페어링)
 export const processCoTeachingConstraints = (
@@ -152,9 +152,10 @@ export const processCoTeachingConstraints = (
           
           addLog(`부교사 선택: ${selectedCoTeacher.name} (참여 횟수: ${coTeacherParticipation[selectedCoTeacher.name]})`, 'info');
 
-          // 공동수업 배치 전 최종 검증
-          if (!validateSlotPlacement(schedule, className, slot.day, slot.period, mainTeacherObj, targetSubject, data, addLog)) {
-            addLog(`경고: ${className} ${slot.day} ${slot.period}교시 공동수업 배치 검증 실패`, 'warning');
+          // 공동수업 배치 전 통합 제약조건 엄격 검증
+          const constraintCheck = validateAllConstraints(schedule, className, slot.day, slot.period, mainTeacherObj, targetSubject, data, addLog);
+          if (!constraintCheck.allowed) {
+            addLog(`❌ 공동수업 배치 - 제약조건 위반으로 배치 불가: ${constraintCheck.message}`, 'error');
             continue;
           }
           

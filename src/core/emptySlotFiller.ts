@@ -1,6 +1,6 @@
 import { Schedule, TimetableData, TeacherHoursTracker, Teacher, Subject } from '../types';
 import { DAYS, getDefaultWeeklyHours, getCurrentSubjectHours } from '../utils/helpers';
-import { checkTeacherUnavailable, validateSlotPlacement, checkSubjectFixedOnly, checkTeacherTimeConflict } from './constraints';
+import { checkTeacherUnavailable, validateSlotPlacement, checkSubjectFixedOnly, checkTeacherTimeConflict, validateAllConstraints } from './constraints';
 import { findAvailableTeachersForSubject } from './teacherAssignment';
 
 // 빈 슬롯 채우기
@@ -93,47 +93,11 @@ export const fillEmptySlots = (
               if (subjectTeacherPairs.length > 0) {
                 const selectedPair = subjectTeacherPairs[0];
 
-                // 빈 슬롯 채우기 직전 수업 불가 시간 최종 확인
-                const unavailableCheck = checkTeacherUnavailable(selectedPair.teacher, day, period);
-                
-                // 응급 모드: 80% 이상 채워졌으면 수업 불가 시간도 우회 (조건 완화)
-                const totalSlots = Object.keys(schedule).reduce((total, cn) => {
-                  return total + DAYS.reduce((dayTotal, d) => {
-                    const periodsForDay = data.base?.periods_per_day?.[d] || 7;
-                    return dayTotal + periodsForDay;
-                  }, 0);
-                }, 0);
-                
-                // 더 정확한 빈 슬롯 계산
-                let emptySlots = 0;
-                Object.keys(schedule).forEach(cn => {
-                  DAYS.forEach(d => {
-                    const periodsForDay = data.base?.periods_per_day?.[d] || 7;
-                    for (let p = 0; p < periodsForDay; p++) {
-                      if (!schedule[cn] || !schedule[cn][d] || !schedule[cn][d][p] || schedule[cn][d][p] === '') {
-                        emptySlots++;
-                      }
-                    }
-                  });
-                });
-                
-                const currentFillRate = ((totalSlots - emptySlots) / totalSlots) * 100;
-                const isEmergencyFill = currentFillRate >= 98; // 98%부터만 제한적 응급 모드
-                
-                if (!unavailableCheck.allowed && !isEmergencyFill) {
-                  return;
-                }
-
-                // 🚨 교사 시간 충돌 검사 (절대 우회 불가능!)
-                const conflictCheck = checkTeacherTimeConflict(schedule, selectedPair.teacher.name, day, period + 1, className);
-                if (!conflictCheck.allowed) {
-                  addLog(`🚨 빈 슬롯 채우기 - 교사 중복 방지: ${selectedPair.teacher.name} - ${conflictCheck.message}`, 'error');
+                // 통합 제약조건 엄격 검증 (모든 제약조건을 한 번에 검증)
+                const constraintCheck = validateAllConstraints(schedule, className, day, period, selectedPair.teacher, selectedPair.subject.name, data, addLog);
+                if (!constraintCheck.allowed) {
+                  addLog(`❌ 빈 슬롯 채우기 - 제약조건 위반으로 배치 불가: ${constraintCheck.message}`, 'error');
                   return; // 절대 배치하지 않음
-                }
-
-                // 슬롯 배치 전 최종 중복 검증
-                if (!validateSlotPlacement(schedule, className, day, period, selectedPair.teacher, selectedPair.subject.name, data, addLog)) {
-                  return;
                 }
 
                 schedule[className][day][period] = {
