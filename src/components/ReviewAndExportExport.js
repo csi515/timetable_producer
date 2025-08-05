@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 // JSON 형식으로 내보내기
 export const exportToJSON = (data) => {
@@ -22,168 +22,166 @@ export const exportToJSON = (data) => {
 };
 
 // Excel 형식으로 내보내기
-export const exportToExcel = (data) => {
-  const workbook = XLSX.utils.book_new();
-  const days = ['월', '화', '수', '목', '금'];
-  const periodsPerDay = data.base?.periods_per_day || { '월': 7, '화': 7, '수': 7, '목': 7, '금': 7 };
-
-  // 학급별 시간표 시트 생성
-  if (data.schedule) {
-    Object.keys(data.schedule).forEach(className => {
-      const worksheetData = [];
+export const exportToExcel = (schedule, teacherHours, data) => {
+  const workbook = new ExcelJS.Workbook();
+  
+  // 1. 학급별 시간표 시트 생성
+  Object.keys(schedule).forEach(className => {
+    const worksheetData = [];
+    
+    // 헤더 행
+    const headerRow = ['교시', '월', '화', '수', '목', '금'];
+    worksheetData.push(headerRow);
+    
+    // 각 교시별 데이터
+    const maxPeriods = Math.max(...Object.values(data.base?.periods_per_day || { '월': 7, '화': 7, '수': 7, '목': 7, '금': 7 }));
+    
+    for (let period = 1; period <= maxPeriods; period++) {
+      const row = [period];
       
-      // 헤더 행
-      const headerRow = ['교시', ...days];
-      worksheetData.push(headerRow);
-      
-      // 시간표 데이터
-      const maxPeriods = Math.max(...Object.values(periodsPerDay));
-      for (let period = 1; period <= maxPeriods; period++) {
-        const row = [period];
+      ['월', '화', '수', '목', '금'].forEach(day => {
+        const slotIndex = period - 1;
+        const slot = schedule[className]?.[day]?.[slotIndex];
         
-        days.forEach(day => {
-          const slotIndex = period - 1;
-          const slot = data.schedule[className][day][slotIndex];
-          
-          if (slot) {
-            if (typeof slot === 'object' && slot.subject) {
-              const teachers = slot.teachers ? slot.teachers.join(', ') : '';
-              const coTeaching = slot.isCoTeaching ? ' (공동수업)' : '';
-              const fixed = slot.isFixed ? ' (고정)' : '';
-              row.push(`${slot.subject} - ${teachers}${coTeaching}${fixed}`);
-            } else if (typeof slot === 'string' && slot.trim() !== '') {
-              row.push(slot.trim());
-            } else {
-              row.push('');
-            }
-          } else {
-            row.push('');
+        if (slot && typeof slot === 'object' && slot.subject) {
+          const teachers = slot.teachers ? slot.teachers.join(', ') : '';
+          const subjectInfo = slot.isCoTeaching ? `${slot.subject} (공동수업)` : slot.subject;
+          row.push(`${subjectInfo} - ${teachers}`);
+        } else if (typeof slot === 'string' && slot.trim() !== '') {
+          row.push(slot);
+        } else {
+          row.push('');
+        }
+      });
+      
+      worksheetData.push(row);
+    }
+    
+    const worksheet = workbook.addWorksheet(className);
+    worksheetData.forEach((row, rowIndex) => {
+      row.forEach((cell, colIndex) => {
+        const cellRef = worksheet.getCell(rowIndex + 1, colIndex + 1);
+        cellRef.value = cell;
+        
+        // 헤더 스타일링
+        if (rowIndex === 0) {
+          cellRef.font = { bold: true };
+          cellRef.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFE0E0E0' }
+          };
+        }
+      });
+    });
+    
+    // 열 너비 자동 조정
+    worksheet.columns.forEach(column => {
+      column.width = 15;
+    });
+  });
+  
+  // 2. 교사별 시간표 시트 생성
+  const teachers = data.teachers || [];
+  teachers.forEach(teacher => {
+    const worksheetData = [];
+    
+    // 헤더 행
+    const headerRow = ['교시', '월', '화', '수', '목', '금'];
+    worksheetData.push(headerRow);
+    
+    // 각 교시별 데이터
+    const maxPeriods = Math.max(...Object.values(data.base?.periods_per_day || { '월': 7, '화': 7, '수': 7, '목': 7, '금': 7 }));
+    
+    for (let period = 1; period <= maxPeriods; period++) {
+      const row = [period];
+      
+      ['월', '화', '수', '목', '금'].forEach(day => {
+        const slotIndex = period - 1;
+        let teacherSlot = '';
+        
+        // 모든 학급에서 해당 교사의 수업 찾기
+        Object.keys(schedule).forEach(className => {
+          const slot = schedule[className]?.[day]?.[slotIndex];
+          if (slot && typeof slot === 'object' && slot.teachers && slot.teachers.includes(teacher.name)) {
+            teacherSlot = `${className} - ${slot.subject}`;
           }
         });
         
-        worksheetData.push(row);
-      }
+        row.push(teacherSlot);
+      });
       
-      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-      XLSX.utils.book_append_sheet(workbook, worksheet, className);
-    });
-  }
-
-  // 교사별 시간표 시트 생성
-  if (data.teachers && data.schedule) {
-    data.teachers.forEach(teacher => {
-      const worksheetData = [];
-      const headerRow = ['교시', ...days];
-      worksheetData.push(headerRow);
-      
-      const maxPeriods = Math.max(...Object.values(periodsPerDay));
-      for (let period = 1; period <= maxPeriods; period++) {
-        const row = [period];
-        
-        days.forEach(day => {
-          const slotIndex = period - 1;
-          let teacherSlot = '';
-          
-          Object.keys(data.schedule).forEach(className => {
-            const slot = data.schedule[className][day][slotIndex];
-            if (slot) {
-              if (typeof slot === 'object' && slot.teachers && slot.teachers.includes(teacher.name)) {
-                const otherTeachers = slot.teachers.filter(t => t !== teacher.name);
-                const otherTeachersStr = otherTeachers.length > 0 ? ` (${otherTeachers.join(', ')})` : '';
-                teacherSlot = `${className} - ${slot.subject}${otherTeachersStr}`;
-              } else if (typeof slot === 'string' && slot.trim() === teacher.name) {
-                teacherSlot = `${className} - 미정`;
-              }
-            }
-          });
-          
-          row.push(teacherSlot);
-        });
-        
-        worksheetData.push(row);
-      }
-      
-      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-      XLSX.utils.book_append_sheet(workbook, worksheet, `${teacher.name} 시간표`);
-    });
-  }
-
-  // 통계 시트 생성
-  const statsData = [];
-  
-  // 과목별 통계
-  if (data.subjects) {
-    statsData.push(['=== 과목별 통계 ===']);
-    statsData.push(['과목명', '목표 시수', '실제 시수', '부족 시수']);
+      worksheetData.push(row);
+    }
     
-    data.subjects.forEach(subject => {
-      const targetHours = subject.weekly_hours || 1;
-      let actualHours = 0;
-      
-      if (data.schedule) {
-        Object.keys(data.schedule).forEach(className => {
-          days.forEach(day => {
-            if (data.schedule[className][day]) {
-              Object.values(data.schedule[className][day]).forEach(slot => {
-                if (slot) {
-                  if (typeof slot === 'object' && slot.subject === subject.name) {
-                    actualHours++;
-                  } else if (typeof slot === 'string' && slot.trim() === subject.name) {
-                    actualHours++;
-                  }
-                }
-              });
-            }
-          });
-        });
-      }
-      
-      const shortage = Math.max(0, targetHours - actualHours);
-      statsData.push([subject.name, targetHours, actualHours, shortage]);
+    const worksheet = workbook.addWorksheet(`${teacher.name} 시간표`);
+    worksheetData.forEach((row, rowIndex) => {
+      row.forEach((cell, colIndex) => {
+        const cellRef = worksheet.getCell(rowIndex + 1, colIndex + 1);
+        cellRef.value = cell;
+        
+        // 헤더 스타일링
+        if (rowIndex === 0) {
+          cellRef.font = { bold: true };
+          cellRef.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFE0E0E0' }
+          };
+        }
+      });
     });
-  }
-  
-  // 교사별 통계
-  if (data.teachers) {
-    statsData.push([]);
-    statsData.push(['=== 교사별 통계 ===']);
-    statsData.push(['교사명', '최대 시수', '실제 시수', '초과 시수']);
     
-    data.teachers.forEach(teacher => {
-      const maxHours = teacher.max_hours_per_week || teacher.maxHours || 25;
-      let actualHours = 0;
-      
-      if (data.schedule) {
-        Object.keys(data.schedule).forEach(className => {
-          days.forEach(day => {
-            if (data.schedule[className][day]) {
-              Object.values(data.schedule[className][day]).forEach(slot => {
-                if (slot) {
-                  if (typeof slot === 'object' && slot.teachers && slot.teachers.includes(teacher.name)) {
-                    actualHours++;
-                  } else if (typeof slot === 'string' && slot.trim() === teacher.name) {
-                    actualHours++;
-                  }
-                }
-              });
-            }
-          });
-        });
-      }
-      
-      const excess = Math.max(0, actualHours - maxHours);
-      statsData.push([teacher.name, maxHours, actualHours, excess]);
+    // 열 너비 자동 조정
+    worksheet.columns.forEach(column => {
+      column.width = 15;
     });
-  }
+  });
   
-  if (statsData.length > 0) {
-    const statsWorksheet = XLSX.utils.aoa_to_sheet(statsData);
-    XLSX.utils.book_append_sheet(workbook, statsWorksheet, '통계');
-  }
-
+  // 3. 통계 시트 생성
+  const statsData = [
+    ['교사명', '현재 시수', '최대 시수', '시수 차이'],
+    ...teachers.map(teacher => {
+      const currentHours = teacherHours[teacher.name]?.current || 0;
+      const maxHours = teacher.max_hours_per_week || teacher.maxHours || 22;
+      return [teacher.name, currentHours, maxHours, maxHours - currentHours];
+    })
+  ];
+  
+  const statsWorksheet = workbook.addWorksheet('통계');
+  statsData.forEach((row, rowIndex) => {
+    row.forEach((cell, colIndex) => {
+      const cellRef = statsWorksheet.getCell(rowIndex + 1, colIndex + 1);
+      cellRef.value = cell;
+      
+      // 헤더 스타일링
+      if (rowIndex === 0) {
+        cellRef.font = { bold: true };
+        cellRef.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFE0E0E0' }
+        };
+      }
+    });
+  });
+  
+  // 열 너비 자동 조정
+  statsWorksheet.columns.forEach(column => {
+    column.width = 15;
+  });
+  
   // 파일 다운로드
   const fileName = `timetable_${new Date().toISOString().split('T')[0]}.xlsx`;
-  XLSX.writeFile(workbook, fileName);
+  workbook.xlsx.writeBuffer().then(buffer => {
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  });
 };
 
 // PDF 형식으로 내보내기 (간단한 텍스트 형식)

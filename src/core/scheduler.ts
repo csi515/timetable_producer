@@ -2188,6 +2188,8 @@ const placeBlockPeriodSubjectsFirst = (
   
   // 1단계: 블록제 교사 제약조건이 있는 교사들의 수업을 최우선으로 배치
   blockPeriodTeachers.forEach(teacherName => {
+    if (!teacherName) return; // teacherName이 undefined인 경우 건너뛰기
+    
     const teacher = teachers.find(t => t.name === teacherName);
     if (!teacher) {
       addLog(`⚠️ 블록제 교사 ${teacherName}을(를) 찾을 수 없습니다.`, 'warning');

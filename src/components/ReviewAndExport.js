@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import * as XLSX from 'xlsx';
+import React, { useState, useEffect } from 'react';
+import ExcelJS from 'exceljs';
 
 function ReviewAndExport({ data, updateData, prevStep }) {
   const [viewMode, setViewMode] = useState('class'); // 'class' or 'teacher'
@@ -281,18 +281,22 @@ function ReviewAndExport({ data, updateData, prevStep }) {
 
   // 엑셀 내보내기
   const exportToExcel = () => {
-    const wb = XLSX.utils.book_new();
+    const wb = new ExcelJS.Workbook();
     const classList = getClassList();
 
     // 학급별 시간표 시트
     classList.forEach(className => {
       const classSchedule = data.schedule[className];
       if (classSchedule) {
-        const ws_data = [['교시', ...days]];
+        const ws = wb.addWorksheet(className);
+        ws.columns = [
+          { header: '교시', key: 'period', width: 10 },
+          ...days.map(day => ({ header: day, key: day, width: 15 }))
+        ];
         
         const maxPeriods = Math.max(...Object.values(data.base.periods_per_day));
         for (let period = 1; period <= maxPeriods; period++) {
-          const row = [`${period}교시`];
+          const row = ws.addRow([`${period}교시`]);
           days.forEach(day => {
             const scheduleItem = classSchedule[day]?.[period - 1] || '';
             let displayText = '';
@@ -329,45 +333,55 @@ function ReviewAndExport({ data, updateData, prevStep }) {
               }
             }
             
-            row.push(displayText);
+            row.getCell(day).value = displayText;
           });
-          ws_data.push(row);
         }
-        
-        const ws = XLSX.utils.aoa_to_sheet(ws_data);
-        XLSX.utils.book_append_sheet(wb, ws, className);
       }
     });
 
     // 교사별 시간표 시트
     data.teachers.forEach(teacher => {
       const teacherSchedule = getTeacherSchedule(teacher.name);
-      const ws_data = [['교시', ...days]];
+      const ws = wb.addWorksheet(`교사_${teacher.name}`);
+      ws.columns = [
+        { header: '교시', key: 'period', width: 10 },
+        ...days.map(day => ({ header: day, key: day, width: 15 }))
+      ];
       
       const maxPeriods = Math.max(...Object.values(data.base.periods_per_day));
       for (let period = 1; period <= maxPeriods; period++) {
-        const row = [`${period}교시`];
+        const row = ws.addRow([`${period}교시`]);
         days.forEach(day => {
           const entry = teacherSchedule[day]?.[period - 1] || '';
-          row.push(period <= data.base.periods_per_day[day] ? entry : '');
+          row.getCell(day).value = period <= data.base.periods_per_day[day] ? entry : '';
         });
-        ws_data.push(row);
       }
-      
-      const ws = XLSX.utils.aoa_to_sheet(ws_data);
-      XLSX.utils.book_append_sheet(wb, ws, `교사_${teacher.name}`);
     });
 
     // 수업 시수 통계 시트
     const stats = getSubjectHoursStats();
-    const stats_data = [['과목', '예정 시수', '실제 배정', '부족분']];
+    const statsWs = wb.addWorksheet('수업시수통계');
+    statsWs.columns = [
+      { header: '과목', key: 'subject', width: 20 },
+      { header: '예정 시수', key: 'expected', width: 15 },
+      { header: '실제 배정', key: 'total', width: 15 },
+      { header: '부족분', key: 'shortfall', width: 15 }
+    ];
     Object.entries(stats).forEach(([subjectName, stat]) => {
-      stats_data.push([subjectName, stat.expected, stat.total, stat.shortfall]);
+      statsWs.addRow([subjectName, stat.expected, stat.total, stat.shortfall]);
     });
-    const stats_ws = XLSX.utils.aoa_to_sheet(stats_data);
-    XLSX.utils.book_append_sheet(wb, stats_ws, '수업시수통계');
 
-    XLSX.writeFile(wb, `timetable_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    wb.xlsx.writeBuffer().then(buffer => {
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `timetable_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    });
   };
 
   const classList = getClassList();

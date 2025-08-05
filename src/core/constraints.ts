@@ -571,8 +571,8 @@ export const placeBlockPeriodSubject = (
     return false; // 해당 교사가 블록제 교사가 아님
   }
 
-  // 교사가 해당 과목을 가르칠 수 있는지 확인
-  if (!teacher.subjects.includes(subjectName)) {
+  // 교사가 해당 과목을 가르칠 수 있는지 확인 (subjectName이 제공된 경우에만)
+  if (subjectName && !teacher.subjects.includes(subjectName)) {
     return false;
   }
 
@@ -594,9 +594,12 @@ export const placeBlockPeriodSubject = (
     return false; // 교사가 다음 교시에 다른 학급에서 수업 중
   }
 
+  // 과목명 결정 (제공된 과목명 또는 교사의 첫 번째 과목)
+  const finalSubjectName = subjectName || teacher.subjects[0] || '';
+
   // 현재 교시 배치
   schedule[className][day][slotIndex] = {
-    subject: subjectName,
+    subject: finalSubjectName,
     teachers: [teacher.name],
     isCoTeaching: false,
     isFixed: false,
@@ -606,7 +609,7 @@ export const placeBlockPeriodSubject = (
 
   // 다음 교시도 자동 배치
   schedule[className][day][nextSlotIndex] = {
-    subject: subjectName,
+    subject: finalSubjectName,
     teachers: [teacher.name],
     isCoTeaching: false,
     isFixed: false,
@@ -627,7 +630,7 @@ export const validateBlockPeriodConstraints = (
   
   // 블록제 교사들 찾기 (제약조건에서 블록제로 설정된 교사들)
   const blockPeriodConstraints = data.constraints?.must?.filter(c => c.type === 'block_period_requirement') || [];
-  const blockPeriodTeachers = blockPeriodConstraints.map(c => c.subject);
+  const blockPeriodTeachers = blockPeriodConstraints.map(c => c.subject).filter((name): name is string => name !== undefined);
   
   if (blockPeriodTeachers.length === 0) {
     return true; // 블록제 교사가 없음
