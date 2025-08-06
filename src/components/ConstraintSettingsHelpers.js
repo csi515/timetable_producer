@@ -7,7 +7,13 @@ export const getConstraintTypeName = (type) => {
     'teacher_unavailable_time': '교사 불가능 시간',
     'specific_teacher_co_teaching': '특정 교사 공동수업',
     'subject_fixed_only': '과목 고정 수업만',
-    'class_max_periods': '학급 최대 교시 제한'
+    'class_max_periods': '학급 최대 교시 제한',
+    'teacher_mutual_exclusion': '교사 상호 배타',
+    'special_room_requirement': '특별실 요구사항',
+    'daily_subject_once': '일일 과목 한 번 제한',
+    'teacher_time_conflict': '교사 시간 충돌 방지',
+    'class_weekly_hours_limit': '학급 주간 시수 제한',
+    'teacher_weekly_hours_limit': '교사 주간 시수 제한'
   };
   return typeNames[type] || type;
 };
@@ -108,8 +114,50 @@ export const validateConstraint = (constraint) => {
       if (!constraint.period) errors.push('- 교시');
       break;
 
-    default:
+    case 'specific_teacher_co_teaching':
+      if (!constraint.mainTeacher) errors.push('- 주교사');
+      if (!constraint.coTeachers) errors.push('- 부교사');
+      if (!constraint.subject) errors.push('- 과목');
       break;
+
+    case 'subject_fixed_only':
+      if (!constraint.subject) errors.push('- 과목');
+      break;
+
+    case 'class_max_periods':
+      if (!constraint.class) errors.push('- 학급');
+      if (!constraint.maxPeriods) errors.push('- 최대 교시 수');
+      break;
+
+    case 'teacher_mutual_exclusion':
+      if (!constraint.teacher1) errors.push('- 교사 1');
+      if (!constraint.teacher2) errors.push('- 교사 2');
+      break;
+
+    case 'special_room_requirement':
+      if (!constraint.subject) errors.push('- 과목');
+      break;
+
+    case 'daily_subject_once':
+      if (!constraint.subject) errors.push('- 과목');
+      break;
+
+    case 'teacher_time_conflict':
+      if (!constraint.teacher) errors.push('- 교사');
+      break;
+
+    case 'class_weekly_hours_limit':
+      if (!constraint.class) errors.push('- 학급');
+      if (!constraint.maxHours) errors.push('- 최대 시수');
+      break;
+
+    case 'teacher_weekly_hours_limit':
+      if (!constraint.teacher) errors.push('- 교사');
+      if (!constraint.maxHours) errors.push('- 최대 시수');
+      break;
+
+    default:
+      errors.push('- 알 수 없는 제약조건 타입');
   }
 
   return errors;
@@ -152,6 +200,36 @@ export const getConstraintTypes = () => {
       value: 'class_max_periods',
       label: '학급 최대 교시 제한',
       description: '특정 학급의 하루 최대 교시 수 제한'
+    },
+    {
+      value: 'teacher_mutual_exclusion',
+      label: '교사 상호 배타',
+      description: '두 교사가 같은 시간에 수업할 수 없음'
+    },
+    {
+      value: 'special_room_requirement',
+      label: '특별실 요구사항',
+      description: '특별실이 필요한 과목의 충돌 방지'
+    },
+    {
+      value: 'daily_subject_once',
+      label: '일일 과목 한 번 제한',
+      description: '하루에 같은 과목을 한 번만 배치 (전체 학급)'
+    },
+    {
+      value: 'teacher_time_conflict',
+      label: '교사 시간 충돌 방지',
+      description: '교사가 같은 시간에 여러 학급에서 수업하는 것 방지'
+    },
+    {
+      value: 'class_weekly_hours_limit',
+      label: '학급 주간 시수 제한',
+      description: '특정 학급의 주간 총 수업 시간 제한'
+    },
+    {
+      value: 'teacher_weekly_hours_limit',
+      label: '교사 주간 시수 제한',
+      description: '특정 교사의 주간 총 수업 시간 제한'
     }
   ];
 };

@@ -17,7 +17,10 @@ import {
   validateTeacherTimeConflicts,
   validateTeacherUnavailableTimes,
   validateCoTeachingConstraints,
-  validateDailySubjectOnceConstraints
+  validateDailySubjectOnceConstraints,
+  validateBlockPeriodConstraints,
+  validateTeacherMutualExclusions,
+  validateSpecialRoomConstraints
 } from './TimetableGenerationValidation';
 import {
   findAvailableSlots,
@@ -187,10 +190,15 @@ function TimetableGeneration({ data, updateData, nextStep, prevStep }) {
       const unavailableViolations = validateTeacherUnavailableTimes(schedule, data, addLog);
       const coTeachingViolations = validateCoTeachingConstraints(schedule, data, addLog);
       const dailySubjectViolations = validateDailySubjectOnceConstraints(schedule, data, addLog);
+      const blockPeriodViolations = validateBlockPeriodConstraints(schedule, data, addLog);
+      const mutualExclusionViolations = validateTeacherMutualExclusions(schedule, data, addLog);
+      const specialRoomViolations = validateSpecialRoomConstraints(schedule, data, addLog);
 
       const totalViolations = teacherViolations.length + classViolations.length + 
                              timeConflictViolations.length + unavailableViolations.length +
-                             coTeachingViolations.length + dailySubjectViolations.length;
+                             coTeachingViolations.length + dailySubjectViolations.length +
+                             blockPeriodViolations.length + mutualExclusionViolations.length +
+                             specialRoomViolations.length;
 
       if (totalViolations > 0) {
         addLog(`⚠️ 검증 결과: ${totalViolations}건의 제약조건 위반 발견`, 'warning');
@@ -488,9 +496,20 @@ function TimetableGeneration({ data, updateData, nextStep, prevStep }) {
         // 제약조건 위반 확인
         const teacherViolations = validateTeacherConstraints(schedule, data, addLog);
         const classViolations = validateClassHoursConstraints(schedule, data, addLog);
+        const timeConflictViolations = validateTeacherTimeConflicts(schedule, data, addLog);
+        const unavailableViolations = validateTeacherUnavailableTimes(schedule, data, addLog);
+        const coTeachingViolations = validateCoTeachingConstraints(schedule, data, addLog);
+        const dailySubjectViolations = validateDailySubjectOnceConstraints(schedule, data, addLog);
+        const blockPeriodViolations = validateBlockPeriodConstraints(schedule, data, addLog);
+        const mutualExclusionViolations = validateTeacherMutualExclusions(schedule, data, addLog);
+        const specialRoomViolations = validateSpecialRoomConstraints(schedule, data, addLog);
         const zeroHoursViolations = 0; // 0시간 설정 위반은 이미 처리됨
 
-        const totalViolations = teacherViolations.length + classViolations.length + zeroHoursViolations;
+        const totalViolations = teacherViolations.length + classViolations.length + 
+                               timeConflictViolations.length + unavailableViolations.length +
+                               coTeachingViolations.length + dailySubjectViolations.length +
+                               blockPeriodViolations.length + mutualExclusionViolations.length +
+                               specialRoomViolations.length + zeroHoursViolations;
         if (totalViolations > 0) {
           let penalty = (teacherViolations.length + classViolations.length) * 5;
           penalty += zeroHoursViolations * 50;

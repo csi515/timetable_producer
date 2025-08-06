@@ -1,3 +1,11 @@
+// 헬퍼 함수들 import
+import { 
+  getCurrentTeacherHours,
+  checkTeacherClassHoursLimit,
+  checkClassWeeklyHoursLimit,
+  checkClassDailyHoursLimit
+} from './TimetableGenerationHelpers';
+
 // 시간표 생성 검증 관련 함수들
 
 // 교사 제약조건 검증
@@ -257,10 +265,139 @@ export const validateDailySubjectOnceConstraints = (schedule, data, addLog) => {
   return violations;
 };
 
-// 헬퍼 함수들 import
-import { 
-  getCurrentTeacherHours,
-  checkTeacherClassHoursLimit,
-  checkClassWeeklyHoursLimit,
-  checkClassDailyHoursLimit
-} from './TimetableGenerationHelpers'; 
+// 블록제 수업 제약조건 검증
+export const validateBlockPeriodConstraints = (schedule, data, addLog) => {
+  const violations = [];
+  
+  const blockPeriodConstraints = (data.constraints?.must || []).filter(c =>
+    c.type === 'block_period_requirement'
+  );
+  
+  blockPeriodConstraints.forEach(constraint => {
+    const subject = constraint.subject;
+    const requiredPeriods = constraint.periods || 2;
+    
+    Object.keys(schedule).forEach(className => {
+      ['월', '화', '수', '목', '금'].forEach(day => {
+        let consecutiveCount = 0;
+        let maxConsecutive = 0;
+        
+        if (schedule[className] && schedule[className][day]) {
+          schedule[className][day].forEach((slot, period) => {
+            if (slot && typeof slot === 'object' && slot.subject === subject) {
+              consecutiveCount++;
+              maxConsecutive = Math.max(maxConsecutive, consecutiveCount);
+            } else {
+              consecutiveCount = 0;
+            }
+          });
+        }
+        
+        if (maxConsecutive < requiredPeriods) {
+          violations.push({
+            type: 'block_period_insufficient',
+            className: className,
+            day: day,
+            subject: subject,
+            required: requiredPeriods,
+            actual: maxConsecutive
+          });
+          addLog(`⚠️ ${className} ${day}요일 ${subject} 블록제 부족: ${maxConsecutive}교시/${requiredPeriods}교시`, 'warning');
+        }
+      });
+    });
+  });
+  
+  return violations;
+};
+
+// 교사 상호 배타 제약조건 검증
+export const validateTeacherMutualExclusions = (schedule, data, addLog) => {
+  const violations = [];
+  
+  const mutualExclusions = (data.constraints?.must || []).filter(c =>
+    c.type === 'teacher_mutual_exclusion'
+  );
+  
+  mutualExclusions.forEach(constraint => {
+    const teacher1 = constraint.teacher1;
+    const teacher2 = constraint.teacher2;
+    
+    Object.keys(schedule).forEach(className => {
+      ['월', '화', '수', '목', '금'].forEach(day => {
+        if (schedule[className] && schedule[className][day]) {
+          schedule[className][day].forEach((slot, period) => {
+            if (slot && typeof slot === 'object' && slot.teachers) {
+              const hasTeacher1 = slot.teachers.includes(teacher1);
+              const hasTeacher2 = slot.teachers.includes(teacher2);
+              
+              if (hasTeacher1 && hasTeacher2) {
+                violations.push({
+                  type: 'teacher_mutual_exclusion_violation',
+                  className: className,
+                  day: day,
+                  period: period + 1,
+                  teacher1: teacher1,
+                  teacher2: teacher2
+                });
+                addLog(`⚠️ ${className} ${day}요일 ${period + 1}교시 상호 배타 교사 동시 배치: ${teacher1}, ${teacher2}`, 'warning');
+              }
+            }
+          });
+        }
+      });
+    });
+  });
+  
+  return violations;
+};
+
+// 과목별 특별실 제약조건 검증
+export const validateSpecialRoomConstraints = (schedule, data, addLog) => {
+  const violations = [];
+  
+  Object.keys(schedule).forEach(className => {
+    ['월', '화', '수', '목', '금'].forEach(day => {
+      if (schedule[className] && schedule[className][day]) {
+        schedule[className][day].forEach((slot, period) => {
+          if (slot && typeof slot === 'object' && slot.subject) {
+            const subject = data.subjects?.find(s => s.name === slot.subject);
+            
+            if (subject && subject.requiresSpecialRoom) {
+              // 특별실이 필요한 과목이 같은 시간에 여러 학급에서 배치되었는지 확인
+              let specialRoomConflict = false;
+              let conflictClasses = [];
+              
+              Object.keys(schedule).forEach(otherClassName => {
+                if (otherClassName !== className && schedule[otherClassName] && schedule[otherClassName][day]) {
+                  const otherSlot = schedule[otherClassName][day][period];
+                  if (otherSlot && typeof otherSlot === 'object' && otherSlot.subject) {
+                    const otherSubject = data.subjects?.find(s => s.name === otherSlot.subject);
+                    if (otherSubject && otherSubject.requiresSpecialRoom) {
+                      specialRoomConflict = true;
+                      conflictClasses.push(otherClassName);
+                    }
+                  }
+                }
+              });
+              
+              if (specialRoomConflict) {
+                violations.push({
+                  type: 'special_room_conflict',
+                  className: className,
+                  day: day,
+                  period: period + 1,
+                  subject: slot.subject,
+                  conflictClasses: conflictClasses
+                });
+                addLog(`⚠️ ${className} ${day}요일 ${period + 1}교시 특별실 충돌: ${slot.subject} (충돌 학급: ${conflictClasses.join(', ')})`, 'warning');
+              }
+            }
+          }
+        });
+      }
+    });
+  });
+  
+  return violations;
+}; 
