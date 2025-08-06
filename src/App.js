@@ -10,15 +10,15 @@ import TimetableGeneration from './components/TimetableGenerationUI.tsx';
 import ReviewAndExport from './components/ReviewAndExport';
 
 const STEPS = [
-  { id: 0, name: '시작', component: StartScreen },
-  { id: 1, name: '기본 설정', component: BasicSettings },
-  { id: 2, name: '과목 설정', component: SubjectSettings },
-  { id: 3, name: '교사 설정', component: TeacherSettings },
-  { id: 4, name: '제약 조건', component: ConstraintSettings },
-  { id: 5, name: '고정 수업', component: FixedClassSettings },
-  { id: 6, name: '최종 확인', component: FinalReview },
-  { id: 7, name: '시간표 생성', component: TimetableGeneration },
-  { id: 8, name: '검토 및 내보내기', component: ReviewAndExport }
+  { id: 0, name: '시작', component: StartScreen, icon: '🚀', description: '시간표 제작을 시작합니다' },
+  { id: 1, name: '기본 설정', component: BasicSettings, icon: '⚙️', description: '학년, 학급, 교시 설정' },
+  { id: 2, name: '과목 설정', component: SubjectSettings, icon: '📚', description: '과목별 시수 및 제약조건' },
+  { id: 3, name: '교사 설정', component: TeacherSettings, icon: '👨‍🏫', description: '교사별 담당 과목 설정' },
+  { id: 4, name: '제약 조건', component: ConstraintSettings, icon: '🎯', description: '시간표 생성 제약조건' },
+  { id: 5, name: '고정 수업', component: FixedClassSettings, icon: '📌', description: '고정할 수업 시간 설정' },
+  { id: 6, name: '최종 확인', component: FinalReview, icon: '✅', description: '설정 내용 최종 확인' },
+  { id: 7, name: '시간표 생성', component: TimetableGeneration, icon: '🎲', description: '자동 시간표 생성' },
+  { id: 8, name: '검토 및 내보내기', component: ReviewAndExport, icon: '📊', description: '완성된 시간표 검토 및 저장' }
 ];
 
 function App() {
@@ -190,12 +190,36 @@ function App() {
 
   const CurrentStepComponent = STEPS[currentStep].component;
 
+  // 프로젝트 진행률 계산
+  const progressPercentage = ((currentStep + 1) / STEPS.length) * 100;
+
+  // 총 학급 수 계산
+  const totalClasses = Array.isArray(data.base.classes_per_grade) 
+    ? data.base.classes_per_grade.reduce((sum, count) => sum + count, 0)
+    : 0;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* 헤더 */}
       <div className="header">
         <h1>🎓 시간표 제작 시스템</h1>
-        <p className="text-lg opacity-90">단계별로 시간표를 제작해보세요</p>
+        <p className="text-lg opacity-90">PC 환경에 최적화된 전문적인 시간표 제작 도구</p>
+        
+        {/* 진행률 표시 */}
+        {currentStep > 0 && (
+          <div className="mt-6 max-w-2xl mx-auto">
+            <div className="flex justify-between text-sm mb-2">
+              <span>진행률</span>
+              <span>{Math.round(progressPercentage)}%</span>
+            </div>
+            <div className="w-full bg-white bg-opacity-30 rounded-full h-3">
+              <div 
+                className="bg-white h-3 rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${progressPercentage}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 메인 레이아웃 */}
@@ -216,83 +240,91 @@ function App() {
           <div className="desktop-layout">
             {/* 사이드바 - 단계 표시기 및 요약 정보 */}
             <div className="sidebar">
-              <h3 className="text-xl font-bold mb-6 text-gray-800">📋 진행 단계</h3>
+              <div className="card-header">
+                <h3 className="card-title">
+                  <span className="card-icon">📋</span>
+                  진행 단계
+                </h3>
+              </div>
               
               {/* 단계 표시기 */}
-              <div className="space-y-3 mb-8">
-                {STEPS.slice(1).map((step) => (
-                  <div
-                    key={step.id}
-                    className={`p-4 rounded-2xl cursor-pointer transition-all duration-300 shadow-md ${
-                      step.id === currentStep 
-                        ? 'bg-blue-500 text-white shadow-lg transform scale-105' 
-                        : step.id < currentStep 
-                          ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-200' 
-                          : 'bg-white text-gray-500 border border-gray-200'
-                    }`}
-                    onClick={() => step.id <= currentStep && goToStep(step.id)}
-                    style={{ cursor: step.id <= currentStep ? 'pointer' : 'default' }}
-                  >
-                    <div className="flex items-center">
-                      <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold mr-3 ${
-                        step.id === currentStep 
-                          ? 'bg-white text-blue-500' 
-                          : step.id < currentStep 
-                            ? 'bg-emerald-500 text-white'
-                            : 'bg-gray-200 text-gray-500'
-                      }`}>
-                        {step.id < currentStep ? '✓' : step.id}
-                      </span>
-                      <span className="font-semibold">{step.name}</span>
+              <div className="space-y-4 mb-8">
+                {STEPS.slice(1).map((step) => {
+                  const isActive = step.id === currentStep;
+                  const isCompleted = step.id < currentStep;
+                  const isPending = step.id > currentStep;
+                  
+                  return (
+                    <div
+                      key={step.id}
+                      className={`progress-step ${
+                        isActive ? 'active' : isCompleted ? 'completed' : 'pending'
+                      }`}
+                      onClick={() => step.id <= currentStep && goToStep(step.id)}
+                      style={{ cursor: step.id <= currentStep ? 'pointer' : 'default' }}
+                    >
+                      <div className="progress-number">
+                        {isCompleted ? '✓' : step.id}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-semibold text-lg">{step.name}</div>
+                        <div className="text-sm opacity-80">{step.description}</div>
+                      </div>
+                      <div className="text-2xl">{step.icon}</div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* 프로젝트 요약 정보 */}
               <div className="section-card">
-                <h4 className="font-semibold mb-4 text-gray-700 flex items-center">
-                  <span className="text-indigo-500 mr-2">📊</span>
-                  프로젝트 요약
-                </h4>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between items-center p-2 bg-white rounded-lg">
-                    <span className="text-gray-600">학년 수:</span>
-                    <span className="font-semibold text-indigo-600">{data.base.grades}개</span>
+                <div className="card-header">
+                  <h4 className="card-title">
+                    <span className="card-icon">📊</span>
+                    프로젝트 요약
+                  </h4>
+                </div>
+                <div className="space-y-4">
+                  <div className="stat-card">
+                    <div className="stat-number">{data.base.grades}</div>
+                    <div className="stat-label">학년 수</div>
                   </div>
-                  <div className="flex justify-between items-center p-2 bg-white rounded-lg">
-                    <span className="text-gray-600">총 학급:</span>
-                    <span className="font-semibold text-indigo-600">
-                      {Array.isArray(data.base.classes_per_grade) 
-                        ? data.base.classes_per_grade.reduce((sum, count) => sum + count, 0)
-                        : 0}개
-                    </span>
+                  <div className="stat-card">
+                    <div className="stat-number">{totalClasses}</div>
+                    <div className="stat-label">총 학급</div>
                   </div>
-                  <div className="flex justify-between items-center p-2 bg-white rounded-lg">
-                    <span className="text-gray-600">과목 수:</span>
-                    <span className="font-semibold text-blue-600">{data.subjects.length}개</span>
+                  <div className="stat-card">
+                    <div className="stat-number">{data.subjects.length}</div>
+                    <div className="stat-label">과목 수</div>
                   </div>
-                  <div className="flex justify-between items-center p-2 bg-white rounded-lg">
-                    <span className="text-gray-600">교사 수:</span>
-                    <span className="font-semibold text-emerald-600">{data.teachers.length}명</span>
+                  <div className="stat-card">
+                    <div className="stat-number">{data.teachers.length}</div>
+                    <div className="stat-label">교사 수</div>
                   </div>
-                  <div className="flex justify-between items-center p-2 bg-white rounded-lg">
-                    <span className="text-gray-600">제약 조건:</span>
-                    <span className="font-semibold text-purple-600">
-                      {(data.constraints.must?.length || 0) + (data.constraints.optional?.length || 0)}개
-                    </span>
+                  <div className="stat-card">
+                    <div className="stat-number">
+                      {(data.constraints.must?.length || 0) + (data.constraints.optional?.length || 0)}
+                    </div>
+                    <div className="stat-label">제약 조건</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-number">{data.fixedClasses.length}</div>
+                    <div className="stat-label">고정 수업</div>
                   </div>
                 </div>
               </div>
 
               {/* 빠른 액션 */}
-              <div className="mt-6 space-y-3">
+              <div className="mt-8 space-y-4">
                 <button 
-                  className="btn btn-secondary w-full text-sm"
+                  className="btn btn-warning w-full"
                   onClick={resetData}
                 >
                   🔄 전체 초기화
                 </button>
+                <div className="text-center text-sm text-gray-500">
+                  마지막 수정: {new Date(data.metadata.last_modified).toLocaleString('ko-KR')}
+                </div>
               </div>
             </div>
 

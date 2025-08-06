@@ -1,6 +1,10 @@
 # 🎓 시간표 제작 시스템 (Timetable Producer)
 
-학교 시간표를 자동으로 생성하는 웹 기반 도구입니다. 교사 배정, 제약 조건 설정, 공동수업 관리 등 다양한 기능을 제공하여 효율적인 시간표 제작을 지원합니다.
+PC 환경에 최적화된 전문적인 시간표 제작 도구입니다. 교사 배정, 제약 조건 설정, 공동수업 관리 등 다양한 기능을 제공하여 효율적인 시간표 제작을 지원합니다.
+
+## 🌐 라이브 데모
+
+**🚀 [GitHub Pages에서 바로 사용해보기](https://your-username.github.io/timetable_producer-main/)**
 
 ## ✨ 주요 기능
 
@@ -25,14 +29,26 @@
 - **문제점 표시**: 제약 조건 위반, 시간 충돌 등 문제점 자동 감지
 - **Excel 내보내기**: 시간표를 Excel 파일로 내보내기
 
+### 🖥️ PC 최적화 UI/UX
+- **가로 방향 레이아웃**: 넓은 화면을 효율적으로 활용
+- **사이드바 네비게이션**: 진행 상황과 프로젝트 요약 정보 표시
+- **반응형 디자인**: 다양한 화면 크기에 대응
+- **직관적 인터페이스**: 현대적이고 사용자 친화적인 디자인
+
 ## 🚀 시작하기
 
-### 설치 및 실행
+### 온라인 사용 (추천)
+GitHub Pages에서 바로 사용할 수 있습니다:
+```
+https://your-username.github.io/timetable_producer-main/
+```
+
+### 로컬 설치 및 실행
 
 1. **저장소 클론**
 ```bash
 git clone [repository-url]
-cd timetable-producer_2nd
+cd timetable_producer-main
 ```
 
 2. **의존성 설치**
@@ -47,7 +63,7 @@ npm start
 
 4. **브라우저에서 접속**
 ```
-http://localhost:8080
+http://localhost:3000
 ```
 
 ### 빌드
@@ -57,10 +73,27 @@ http://localhost:8080
 npm run build
 ```
 
+### GitHub Pages 배포
+
+자동 배포 (GitHub Actions 사용):
+```bash
+# main 브랜치에 푸시하면 자동으로 배포됩니다
+git add .
+git commit -m "Update for deployment"
+git push origin main
+```
+
+수동 배포:
+```bash
+npm run deploy
+```
+
 ## 📁 프로젝트 구조
 
 ```
-timetable-producer_2nd/
+timetable_producer-main/
+├── index.html              # GitHub Pages 진입점
+├── dist/                   # 빌드된 파일들
 ├── src/
 │   ├── components/          # React 컴포넌트
 │   │   ├── forms/          # 폼 컴포넌트
@@ -77,6 +110,7 @@ timetable-producer_2nd/
 │   ├── utils/              # 유틸리티 함수
 │   └── services/           # 서비스 로직
 ├── public/                 # 정적 파일
+├── .github/workflows/      # GitHub Actions 워크플로우
 └── package.json           # 프로젝트 설정
 ```
 
@@ -96,6 +130,10 @@ timetable-producer_2nd/
 ### Libraries
 - **XLSX**: Excel 파일 처리
 - **@dnd-kit**: 드래그 앤 드롭 (최신 버전)
+
+### 배포
+- **GitHub Pages**: 정적 사이트 호스팅
+- **GitHub Actions**: 자동 배포
 
 ## 📖 사용법
 

@@ -1,12 +1,16 @@
 {
   "name": "timetable-producer",
   "version": "1.0.0",
-  "description": "시간표 제작 시스템",
+  "description": "PC 환경에 최적화된 전문적인 시간표 제작 도구",
   "main": "index.js",
+  "homepage": "https://your-username.github.io/timetable_producer-main",
   "scripts": {
     "start": "webpack serve --mode development --open",
     "build": "webpack --mode production",
-    "dev": "webpack serve --mode development"
+    "dev": "webpack serve --mode development",
+    "predeploy": "npm run build && node deploy.js",
+    "deploy": "gh-pages -d .",
+    "deploy:manual": "npm run build && node deploy.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -27,6 +31,7 @@
     "autoprefixer": "^10.4.16",
     "babel-loader": "^9.1.0",
     "css-loader": "^6.8.0",
+    "gh-pages": "^6.1.0",
     "html-webpack-plugin": "^5.5.0",
     "postcss": "^8.4.31",
     "postcss-loader": "^8.1.1",
@@ -41,8 +46,12 @@
   "keywords": [
     "timetable",
     "schedule",
-    "education"
+    "education",
+    "school",
+    "teacher",
+    "subject",
+    "automation"
   ],
-  "author": "",
+  "author": "시간표 제작 시스템",
   "license": "MIT"
 }
