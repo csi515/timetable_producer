@@ -42,7 +42,7 @@ const ClassHoursTable = ({ classHours }) => {
                   </td>
                   <td>
                     <div className="text-sm">
-                      {Object.entries(safeObject(hours.subjects)).map(([subject, count]) => (
+                      {Object.entries(safeObject(hours.subjects || {})).map(([subject, count]) => (
                         <span key={subject} className="inline-block bg-gray-100 px-2 py-1 rounded mr-1 mb-1">
                           {subject}: {count}시간
                         </span>

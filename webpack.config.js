@@ -8,7 +8,7 @@ module.exports = (env, argv) => {
     entry: './src/index.js',
     output: {
       path: path.resolve(__dirname, 'dist'),
-      filename: isProduction ? '[name].[contenthash].js' : 'bundle.js',
+      filename: isProduction ? '[name].[contenthash].js' : '[name].js',
       clean: true,
       // GitHub Pages를 위한publicPath 설정
       publicPath: isProduction ? '/timetable_producer/' : '/',
