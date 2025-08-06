@@ -197,4 +197,80 @@ export const validateSlotPlacement = (schedule, className, day, period, teacher,
   }
   
   return true;
+};
+
+// 헬퍼 함수: 학급별 주간 시수 제한 확인
+export const checkClassWeeklyHoursLimit = (className, schedule, data) => {
+  if (!data.classWeeklyHours || !data.classWeeklyHours[className]) {
+    return { allowed: true, reason: 'no_limit' };
+  }
+  
+  const maxHours = data.classWeeklyHours[className];
+  let currentHours = 0;
+  const days = ['월', '화', '수', '목', '금'];
+  
+  days.forEach(day => {
+    if (schedule[className] && schedule[className][day]) {
+      schedule[className][day].forEach(slot => {
+        if (slot && typeof slot === 'object' && slot.subject) {
+          currentHours++;
+        }
+      });
+    }
+  });
+  
+  if (currentHours > maxHours) {
+    return { 
+      allowed: false, 
+      reason: 'weekly_hours_exceeded',
+      current: currentHours,
+      max: maxHours
+    };
+  }
+  
+  return { allowed: true, current: currentHours, max: maxHours };
+};
+
+// 헬퍼 함수: 학급별 일일 시수 제한 확인
+export const checkClassDailyHoursLimit = (className, day, schedule, data) => {
+  // 기본적으로 일일 시수 제한은 없음 (필요시 추가)
+  const maxHours = 7; // 기본값
+  let currentHours = 0;
+  
+  if (schedule[className] && schedule[className][day]) {
+    schedule[className][day].forEach(slot => {
+      if (slot && typeof slot === 'object' && slot.subject) {
+        currentHours++;
+      }
+    });
+  }
+  
+  if (currentHours > maxHours) {
+    return { 
+      allowed: false, 
+      reason: 'daily_hours_exceeded',
+      current: currentHours,
+      max: maxHours
+    };
+  }
+  
+  return { allowed: true, current: currentHours, max: maxHours };
+};
+
+
+
+// 헬퍼 함수: 학급 목록 생성 (ReviewAndExportHelpers에서 가져옴)
+export const getClassList = (data) => {
+  const classes = [];
+  const grades = data.base?.grades || 3;
+  const classesPerGrade = data.base?.classes_per_grade || [4, 4, 4];
+
+  for (let grade = 1; grade <= grades; grade++) {
+    const classCount = classesPerGrade[grade - 1] || 4;
+    for (let classNum = 1; classNum <= classCount; classNum++) {
+      classes.push(`${grade}학년 ${classNum}반`);
+    }
+  }
+
+  return classes;
 }; 

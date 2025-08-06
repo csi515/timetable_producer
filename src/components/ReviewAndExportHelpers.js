@@ -199,6 +199,14 @@ export const getSubjectHoursStats = (data) => {
   return stats;
 };
 
+// 교사 목록 생성
+export const getTeacherList = (data) => {
+  if (!data.teachers || !Array.isArray(data.teachers)) {
+    return [];
+  }
+  return data.teachers.map(teacher => teacher.name);
+};
+
 // 교사별 시수 통계 계산
 export const getTeacherHoursStats = (data) => {
   const stats = {};

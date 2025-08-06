@@ -303,7 +303,21 @@ export const validateSlotPlacement = (
     }
   }
   
-  // 8. 특별실 제약조건 확인
+  // 8. 교사 간 동시 수업 제약조건 확인
+  const mutualExclusionCheck = checkTeacherMutualExclusion(schedule, teacher.name, day, period, data, className);
+  if (!mutualExclusionCheck.allowed) {
+    addLog(`❌ 슬롯 검증 실패: ${mutualExclusionCheck.message}`, 'error');
+    return false;
+  }
+  
+  // 9. 학년별 순차 수업 배정 제약조건 확인
+  const sequentialGradeCheck = checkSequentialGradeTeaching(schedule, teacher.name, day, period, className, data);
+  if (!sequentialGradeCheck.allowed) {
+    addLog(`❌ 슬롯 검증 실패: ${sequentialGradeCheck.message}`, 'error');
+    return false;
+  }
+  
+  // 10. 특별실 제약조건 확인
   const subjectData = data.subjects?.find(s => s.name === subject);
   if (subjectData?.is_space_limited) {
     // 같은 시간에 다른 학급에서 특별실을 사용하는 과목이 있는지 확인
@@ -742,4 +756,340 @@ export const validateBlockPeriodConstraints = (
   });
 
   return allValid;
+};
+
+// 교사 간 동시 수업 제약조건 검사
+export const checkTeacherMutualExclusion = (
+  schedule: Schedule,
+  teacherName: string,
+  day: string,
+  period: number,
+  data: TimetableData,
+  excludeClassName?: string
+): ValidationResult => {
+  const teacher = data.teachers.find(t => t.name === teacherName);
+  if (!teacher || !teacher.mutual_exclusions || teacher.mutual_exclusions.length === 0) {
+    return { allowed: true };
+  }
+
+  const slotIndex = period - 1;
+  
+  // 모든 학급을 검사하여 상호 배제 교사들이 같은 시간에 수업하는지 확인
+  for (const className of Object.keys(schedule)) {
+    // 현재 배치하려는 학급은 제외
+    if (excludeClassName && className === excludeClassName) continue;
+    
+    if (schedule[className] && schedule[className][day] && schedule[className][day][slotIndex]) {
+      const slot = schedule[className][day][slotIndex];
+      
+      // 슬롯이 객체이고 teachers 배열이 있는 경우
+      if (slot && typeof slot === 'object' && 'teachers' in slot && Array.isArray(slot.teachers)) {
+        // 상호 배제 교사 중 하나라도 같은 시간에 수업하는지 확인
+        for (const slotTeacher of slot.teachers) {
+          if (teacher.mutual_exclusions.includes(slotTeacher)) {
+            return {
+              allowed: false,
+              reason: 'teacher_mutual_exclusion',
+              message: `${teacherName} 교사와 ${slotTeacher} 교사는 동시에 수업할 수 없습니다. ${day}요일 ${period}교시에 ${slotTeacher} 교사가 ${className}에서 수업 중입니다.`,
+              conflictClass: className,
+              conflictSubject: slot.subject,
+              conflictTeacher: slotTeacher
+            };
+          }
+        }
+      }
+      // 구버전 호환성: 문자열인 경우도 확인
+      else if (typeof slot === 'string') {
+        for (const excludedTeacher of teacher.mutual_exclusions) {
+          if (slot.includes(excludedTeacher)) {
+            return {
+              allowed: false,
+              reason: 'teacher_mutual_exclusion',
+              message: `${teacherName} 교사와 ${excludedTeacher} 교사는 동시에 수업할 수 없습니다. ${day}요일 ${period}교시에 ${excludedTeacher} 교사가 ${className}에서 수업 중입니다. (구버전)`,
+              conflictClass: className,
+              conflictTeacher: excludedTeacher
+            };
+          }
+        }
+      }
+    }
+  }
+  
+  return { allowed: true };
+};
+
+// 교사 간 동시 수업 제약조건 전체 검증
+export const validateTeacherMutualExclusions = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): boolean => {
+  let allValid = true;
+  const violations: string[] = [];
+
+  // 상호 배제 제약조건이 있는 교사들 찾기
+  const teachersWithExclusions = data.teachers.filter(t => t.mutual_exclusions && t.mutual_exclusions.length > 0);
+  
+  if (teachersWithExclusions.length === 0) {
+    return true; // 상호 배제 제약조건이 없음
+  }
+
+  addLog(`🔍 교사 간 동시 수업 제약조건 검증: ${teachersWithExclusions.length}명의 교사`, 'info');
+
+  // 각 교사에 대해 검증
+  teachersWithExclusions.forEach(teacher => {
+    Object.keys(schedule).forEach(className => {
+      DAYS.forEach(day => {
+        const maxPeriods = data.base?.periods_per_day?.[day] || 7;
+        
+        for (let period = 1; period <= maxPeriods; period++) {
+          const slotIndex = period - 1;
+          const slot = schedule[className]?.[day]?.[slotIndex];
+          
+          if (slot && typeof slot === 'object' && slot.teachers && slot.teachers.includes(teacher.name)) {
+            // 이 교사가 수업하는 시간에 상호 배제 교사들이 다른 학급에서 수업하는지 확인
+            for (const otherClassName of Object.keys(schedule)) {
+              if (otherClassName === className) continue; // 같은 학급은 제외
+              
+              const otherSlot = schedule[otherClassName]?.[day]?.[slotIndex];
+              if (otherSlot && typeof otherSlot === 'object' && otherSlot.teachers) {
+                for (const otherTeacher of otherSlot.teachers) {
+                  if (teacher.mutual_exclusions && teacher.mutual_exclusions.includes(otherTeacher)) {
+                    const violation = `${teacher.name} 교사와 ${otherTeacher} 교사가 ${day}요일 ${period}교시에 동시 수업 중 (${className}, ${otherClassName})`;
+                    violations.push(violation);
+                    addLog(`❌ ${violation}`, 'error');
+                    allValid = false;
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+    });
+  });
+
+  if (allValid) {
+    addLog(`✅ 교사 간 동시 수업 제약조건 검증 통과`, 'success');
+  } else {
+    addLog(`❌ 교사 간 동시 수업 제약조건 위반 ${violations.length}건 발견`, 'error');
+  }
+
+  return allValid;
+};
+
+// 교사 간 동시 수업 제약조건 정보 반환
+export const getTeacherMutualExclusionsInfo = (data: TimetableData): string[] => {
+  const info: string[] = [];
+  
+  data.teachers.forEach(teacher => {
+    if (teacher.mutual_exclusions && teacher.mutual_exclusions.length > 0) {
+      info.push(`${teacher.name} 교사 ↔ ${teacher.mutual_exclusions.join(', ')} 교사`);
+    }
+  });
+  
+  return info;
+};
+
+// 학년별 순차 수업 배정 제약조건 검사
+export const checkSequentialGradeTeaching = (
+  schedule: Schedule,
+  teacherName: string,
+  day: string,
+  period: number,
+  className: string,
+  data: TimetableData
+): ValidationResult => {
+  const teacher = data.teachers.find(t => t.name === teacherName);
+  if (!teacher || !teacher.sequential_grade_teaching) {
+    return { allowed: true };
+  }
+
+  // 현재 배치하려는 학급의 학년 추출
+  const currentGrade = extractGradeFromClassName(className);
+  if (!currentGrade) {
+    return { allowed: true }; // 학년을 추출할 수 없는 경우 제약조건 적용 안함
+  }
+
+  const maxPeriods = data.base?.periods_per_day?.[day] || 7;
+  
+  // 해당 날짜의 모든 교시에서 이 교사의 수업을 찾아 학년별로 그룹화
+  const gradeGroups: Record<number, number[]> = {};
+  
+  for (let p = 1; p <= maxPeriods; p++) {
+    const slotIndex = p - 1;
+    
+    // 현재 배치하려는 슬롯은 제외하고 검사
+    if (p === period) continue;
+    
+    // 모든 학급에서 이 교사의 수업 확인
+    for (const otherClassName of Object.keys(schedule)) {
+      if (otherClassName === className) continue; // 현재 학급은 제외
+      
+      const slot = schedule[otherClassName]?.[day]?.[slotIndex];
+      if (slot && typeof slot === 'object' && slot.teachers && slot.teachers.includes(teacherName)) {
+        const otherGrade = extractGradeFromClassName(otherClassName);
+        if (otherGrade) {
+          if (!gradeGroups[otherGrade]) {
+            gradeGroups[otherGrade] = [];
+          }
+          gradeGroups[otherGrade].push(p);
+        }
+      }
+    }
+  }
+
+  // 현재 교시를 현재 학년 그룹에 추가
+  if (!gradeGroups[currentGrade]) {
+    gradeGroups[currentGrade] = [];
+  }
+  gradeGroups[currentGrade].push(period);
+
+  // 학년별로 연속성 검사
+  const violations = checkGradeSequentialViolations(gradeGroups, period, currentGrade);
+  
+  if (violations.length > 0) {
+    return {
+      allowed: false,
+      reason: 'sequential_grade_violation',
+      message: `${teacherName} 교사의 학년별 순차 수업 배정 위반: ${violations.join(', ')}`,
+      day: day,
+      period: period,
+      conflictClass: className
+    };
+  }
+
+  return { allowed: true };
+};
+
+// 학년별 순차 수업 배정 제약조건 전체 검증
+export const validateSequentialGradeTeaching = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): boolean => {
+  let allValid = true;
+  const violations: string[] = [];
+
+  // 학년별 순차 수업 배정 제약조건이 있는 교사들 찾기
+  const teachersWithSequential = data.teachers.filter(t => t.sequential_grade_teaching);
+  
+  if (teachersWithSequential.length === 0) {
+    return true; // 제약조건이 없음
+  }
+
+  addLog(`🔍 학년별 순차 수업 배정 제약조건 검증: ${teachersWithSequential.length}명의 교사`, 'info');
+
+  // 각 교사에 대해 검증
+  teachersWithSequential.forEach(teacher => {
+    DAYS.forEach(day => {
+      const maxPeriods = data.base?.periods_per_day?.[day] || 7;
+      
+      // 해당 날짜의 모든 교시에서 이 교사의 수업을 찾아 학년별로 그룹화
+      const gradeGroups: Record<number, number[]> = {};
+      
+      for (let period = 1; period <= maxPeriods; period++) {
+        const slotIndex = period - 1;
+        
+        // 모든 학급에서 이 교사의 수업 확인
+        Object.keys(schedule).forEach(className => {
+          const slot = schedule[className]?.[day]?.[slotIndex];
+          if (slot && typeof slot === 'object' && slot.teachers && slot.teachers.includes(teacher.name)) {
+            const grade = extractGradeFromClassName(className);
+            if (grade) {
+              if (!gradeGroups[grade]) {
+                gradeGroups[grade] = [];
+              }
+              gradeGroups[grade].push(period);
+            }
+          }
+        });
+      }
+
+      // 학년별로 연속성 검사
+      const dayViolations = checkGradeSequentialViolations(gradeGroups);
+      
+      if (dayViolations.length > 0) {
+        const violation = `${teacher.name} 교사 ${day}요일: ${dayViolations.join(', ')}`;
+        violations.push(violation);
+        addLog(`❌ ${violation}`, 'error');
+        allValid = false;
+      }
+    });
+  });
+
+  if (allValid) {
+    addLog(`✅ 학년별 순차 수업 배정 제약조건 검증 통과`, 'success');
+  } else {
+    addLog(`❌ 학년별 순차 수업 배정 제약조건 위반 ${violations.length}건 발견`, 'error');
+  }
+
+  return allValid;
+};
+
+// 학년별 순차 수업 배정 제약조건 정보 반환
+export const getSequentialGradeTeachingInfo = (data: TimetableData): string[] => {
+  const info: string[] = [];
+  
+  data.teachers.forEach(teacher => {
+    if (teacher.sequential_grade_teaching) {
+      info.push(`${teacher.name} 교사: 학년별 순차 수업 배정 적용`);
+    }
+  });
+  
+  return info;
+};
+
+// 헬퍼 함수: 학급명에서 학년 추출
+const extractGradeFromClassName = (className: string): number | null => {
+  // 학급명 형식: "1학년 1반", "2학년 3반", "3-1", "1-2" 등
+  const gradeMatch = className.match(/(\d+)학년|^(\d+)-/);
+  if (gradeMatch) {
+    return parseInt(gradeMatch[1] || gradeMatch[2]);
+  }
+  return null;
+};
+
+// 헬퍼 함수: 학년별 연속성 위반 검사
+const checkGradeSequentialViolations = (
+  gradeGroups: Record<number, number[]>, 
+  currentPeriod?: number, 
+  currentGrade?: number
+): string[] => {
+  const violations: string[] = [];
+  
+  // 각 학년의 교시들을 정렬
+  const sortedGrades = Object.keys(gradeGroups).map(Number).sort((a, b) => a - b);
+  
+  // 학년별로 연속성 검사
+  for (let i = 0; i < sortedGrades.length; i++) {
+    const grade = sortedGrades[i];
+    const periods = gradeGroups[grade].sort((a, b) => a - b);
+    
+    // 현재 배치하려는 교시가 있는 경우, 해당 교시를 제외하고 검사
+    let periodsToCheck = periods;
+    if (currentPeriod && currentGrade === grade) {
+      periodsToCheck = periods.filter(p => p !== currentPeriod);
+    }
+    
+    // 연속되지 않은 교시가 있는지 확인
+    for (let j = 0; j < periodsToCheck.length - 1; j++) {
+      if (periodsToCheck[j + 1] - periodsToCheck[j] > 1) {
+        // 연속되지 않은 경우, 그 사이에 다른 학년 수업이 있는지 확인
+        const gapStart = periodsToCheck[j] + 1;
+        const gapEnd = periodsToCheck[j + 1] - 1;
+        
+        for (let gap = gapStart; gap <= gapEnd; gap++) {
+          // 그 사이 교시에 다른 학년 수업이 있는지 확인
+          for (const otherGrade of sortedGrades) {
+            if (otherGrade !== grade && gradeGroups[otherGrade].includes(gap)) {
+              violations.push(`${grade}학년 수업 중간에 ${otherGrade}학년 수업이 끼어있음 (${gap}교시)`);
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  return violations;
 };

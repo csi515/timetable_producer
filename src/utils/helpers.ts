@@ -157,8 +157,163 @@ export const canPlaceClassInSchedule = (className: string, data: TimetableData):
 // 로그 메시지 생성
 export const createLogMessage = (message: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
   return {
-    message,
+    message: `[${new Date().toLocaleTimeString()}] ${message}`,
     type,
     timestamp: new Date()
   };
+};
+
+// 스케줄 초기화 함수
+export const initializeSchedule = (data: TimetableData): Schedule => {
+  const schedule: Schedule = {};
+  const classNames = generateClassNames(data);
+  const periodsPerDay = data.base?.periods_per_day || { '월': 7, '화': 7, '수': 7, '목': 7, '금': 7 };
+
+  classNames.forEach(className => {
+    schedule[className] = {};
+    DAYS.forEach(day => {
+      const maxPeriods = periodsPerDay[day] || 7;
+      schedule[className][day] = {};
+      for (let period = 1; period <= maxPeriods; period++) {
+        schedule[className][day][period] = undefined;
+      }
+    });
+  });
+
+  return schedule;
+};
+
+// 배치 계획 생성 함수
+export const createPlacementPlan = (
+  className: string,
+  subject: string,
+  availableTeachers: Teacher[],
+  priority: number
+) => {
+  return {
+    className,
+    subject,
+    availableTeachers,
+    priority
+  };
+};
+
+// 배치 계획 실행 함수 (엄격한 제약조건)
+export const executePlacementPlanStrict = (
+  schedule: Schedule,
+  placementPlan: any,
+  data: TimetableData,
+  teacherHours: TeacherHoursTracker,
+  addLog: (message: string, type?: string) => void
+): boolean => {
+  const { className, subject, availableTeachers } = placementPlan;
+  
+  // 사용 가능한 슬롯 찾기
+  const availableSlots = findAvailableSlots(schedule, className, availableTeachers[0], subject);
+  
+  if (availableSlots.length === 0) {
+    addLog(`경고: ${className} ${subject} 수업을 배치할 수 있는 슬롯이 없습니다.`, 'warning');
+    return false;
+  }
+
+  // 첫 번째 사용 가능한 슬롯에 배치
+  const selectedSlot = availableSlots[0];
+  
+  // 슬롯 배치
+  schedule[className][selectedSlot.day][selectedSlot.period] = {
+    subject: subject,
+    teachers: [availableTeachers[0].name],
+    isCoTeaching: false,
+    isFixed: false,
+    source: 'placement_plan'
+  };
+
+  // 교사 시수 업데이트
+  if (!teacherHours[availableTeachers[0].name]) {
+    teacherHours[availableTeachers[0].name] = {
+      current: 0,
+      max: availableTeachers[0].maxHours || 25,
+      subjects: {}
+    };
+  }
+  teacherHours[availableTeachers[0].name].current++;
+  
+  if (!teacherHours[availableTeachers[0].name].subjects[subject]) {
+    teacherHours[availableTeachers[0].name].subjects[subject] = 0;
+  }
+  teacherHours[availableTeachers[0].name].subjects[subject]++;
+
+  addLog(`✅ ${className} ${selectedSlot.day}요일 ${selectedSlot.period}교시 ${subject} 배치 완료 (${availableTeachers[0].name})`, 'success');
+  return true;
+};
+
+// 사용 가능한 슬롯 찾기 함수
+export const findAvailableSlots = (
+  schedule: Schedule,
+  className: string,
+  teacher: Teacher,
+  subjectName: string
+): Array<{ day: string; period: number }> => {
+  const availableSlots: Array<{ day: string; period: number }> = [];
+  
+  DAYS.forEach(day => {
+    if (schedule[className] && schedule[className][day]) {
+      Object.entries(schedule[className][day]).forEach(([periodStr, slot]) => {
+        const period = parseInt(periodStr);
+        
+        // 빈 슬롯인 경우
+        if (!slot) {
+          // 교사 수업 불가 시간 확인
+          const isUnavailable = teacher.unavailable?.some(([unavailableDay, unavailablePeriod]) => 
+            unavailableDay === day && unavailablePeriod === period
+          );
+          
+          if (!isUnavailable) {
+            availableSlots.push({ day, period });
+          }
+        }
+      });
+    }
+  });
+  
+  return availableSlots;
+};
+
+// 특정 과목을 가르칠 수 있는 교사들 찾기
+export const findAvailableTeachersForSubject = (
+  subjectName: string,
+  teachers: Teacher[],
+  schedule: Schedule,
+  className: string,
+  day: string,
+  period: number
+): Teacher[] => {
+  return teachers.filter(teacher => {
+    // 해당 과목을 가르칠 수 있는지 확인
+    if (!teacher.subjects.includes(subjectName)) {
+      return false;
+    }
+    
+    // 해당 시간에 수업 불가능한지 확인
+    const isUnavailable = teacher.unavailable?.some(([unavailableDay, unavailablePeriod]) => 
+      unavailableDay === day && unavailablePeriod === period
+    );
+    
+    if (isUnavailable) {
+      return false;
+    }
+    
+    // 해당 시간에 다른 학급에서 수업 중인지 확인
+    const hasConflict = Object.keys(schedule).some(otherClassName => {
+      if (otherClassName === className) return false;
+      
+      const otherSlot = schedule[otherClassName]?.[day]?.[period];
+      if (otherSlot && typeof otherSlot === 'object' && 'teachers' in otherSlot) {
+        return otherSlot.teachers.includes(teacher.name);
+      }
+      return false;
+    });
+    
+    return !hasConflict;
+  });
 }; 

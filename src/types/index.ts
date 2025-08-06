@@ -28,6 +28,10 @@ export interface Teacher {
   classWeeklyHours: Record<string, number>;
   subjectHours: Record<string, number>;
   id?: number;
+  // 교사 간 동시 수업 제약조건
+  mutual_exclusions?: string[]; // 동시에 수업할 수 없는 교사들의 이름 배열
+  // 학년별 순차 수업 배정 제약조건
+  sequential_grade_teaching?: boolean; // 학년별 순차 수업 배정 적용 여부
 }
 
 export interface Constraint {
@@ -113,6 +117,7 @@ export interface ValidationResult {
   period?: number;
   conflictClass?: string; // 충돌하는 학급명
   conflictSubject?: string; // 충돌하는 과목명
+  conflictTeacher?: string; // 충돌하는 교사명
 }
 
 // 교사 시수 추적 타입

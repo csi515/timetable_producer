@@ -1,5 +1,5 @@
-import { Schedule, Teacher, TimetableData, CoTeachingConstraint } from '../types';
-import { DAYS } from '../utils/helpers';
+import { Schedule, Teacher, TimetableData } from '../types';
+import { DAYS, getCurrentTeacherHours, convertClassNameToKey } from '../utils/helpers';
 import { findAvailableSlots } from './slotFinder';
 import { validateSlotPlacement } from './constraints';
 

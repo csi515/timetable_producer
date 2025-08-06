@@ -1,11 +1,31 @@
+import { createValidationError, handleError, ERROR_TYPES } from '../utils/errorHandler';
+
 // 교사 추가 함수
 export const addTeacher = (teachers, newTeacher, updateData) => {
-  if (newTeacher.name.trim() && newTeacher.subjects.length > 0) {
+  try {
+    if (!newTeacher.name.trim()) {
+      throw createValidationError('교사명을 입력해주세요.', 'name');
+    }
+    
+    if (!newTeacher.subjects || newTeacher.subjects.length === 0) {
+      throw createValidationError('담당 과목을 선택해주세요.', 'subjects');
+    }
+    
+    // 중복 교사명 검사
+    const isDuplicate = teachers.some(teacher => 
+      teacher.name.trim().toLowerCase() === newTeacher.name.trim().toLowerCase()
+    );
+    
+    if (isDuplicate) {
+      throw createValidationError('이미 존재하는 교사명입니다.', 'name');
+    }
+    
     const updatedTeachers = [...teachers, { ...newTeacher, id: Date.now() }];
     updateData('teachers', updatedTeachers);
-    return updatedTeachers;
-  } else {
-    throw new Error('교사명과 담당 과목을 입력해주세요.');
+    return { success: true, teachers: updatedTeachers };
+    
+  } catch (error) {
+    return handleError(error, 'addTeacher', ERROR_TYPES.VALIDATION);
   }
 };
 

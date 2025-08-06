@@ -1,4 +1,4 @@
-import { Schedule, TimetableData, TeacherHoursTracker, Teacher, Subject } from '../types';
+import { Schedule, Teacher, TimetableData, TeacherHoursTracker, Subject } from '../types';
 import { DAYS, getDefaultWeeklyHours, getCurrentSubjectHours } from '../utils/helpers';
 import { checkTeacherUnavailable, validateSlotPlacement, checkSubjectFixedOnly, checkTeacherTimeConflict } from './constraints';
 import { findAvailableTeachersForSubject } from './teacherAssignment';

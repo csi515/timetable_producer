@@ -8,7 +8,7 @@ module.exports = (env, argv) => {
     entry: './src/index.js',
     output: {
       path: path.resolve(__dirname, 'dist'),
-      filename: 'bundle.js',
+      filename: isProduction ? '[name].[contenthash].js' : 'bundle.js',
       clean: true,
       // GitHub Pages를 위한 publicPath 설정
       publicPath: isProduction ? '/timetable_producer/' : '/',
@@ -22,7 +22,11 @@ module.exports = (env, argv) => {
             loader: 'babel-loader',
             options: {
               presets: [
-                '@babel/preset-env', 
+                ['@babel/preset-env', {
+                  targets: '> 0.25%, not dead',
+                  useBuiltIns: 'usage',
+                  corejs: 3
+                }], 
                 '@babel/preset-react',
                 '@babel/preset-typescript'
               ],
@@ -54,9 +58,31 @@ module.exports = (env, argv) => {
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx'],
     },
-    // 프로덕션 최적화 비활성화 (충돌 방지)
+    // 프로덕션 최적화 설정
     optimization: {
       minimize: isProduction,
+      splitChunks: {
+        chunks: 'all',
+        cacheGroups: {
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: 'vendors',
+            chunks: 'all',
+          },
+          exceljs: {
+            test: /[\\/]node_modules[\\/]exceljs[\\/]/,
+            name: 'exceljs',
+            chunks: 'all',
+            priority: 10,
+          },
+        },
+      },
+    },
+    // 성능 경고 임계값 조정
+    performance: {
+      hints: isProduction ? 'warning' : false,
+      maxEntrypointSize: 512000,
+      maxAssetSize: 512000,
     },
   };
 }; 
