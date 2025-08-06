@@ -103,11 +103,11 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                     
                     return (
                       <td key={day} className="border border-gray-300 px-4 py-2 text-center">
-                        {convertedSlot ? (
+                        {convertedSlot && convertedSlot.subject ? (
                           <div>
                             <div className="font-medium text-sm">{convertedSlot.subject}</div>
                             <div className="text-xs text-gray-600">
-                              {convertedSlot.teachers.join(', ')}
+                              {convertedSlot.teachers && convertedSlot.teachers.join ? convertedSlot.teachers.join(', ') : ''}
                             </div>
                             {convertedSlot.isCoTeaching && (
                               <div className="text-xs text-blue-600">공동수업</div>
@@ -170,10 +170,10 @@ function ReviewAndExport({ data, updateData, prevStep }) {
                     
                     return (
                       <td key={day} className="border border-gray-300 px-4 py-2 text-center">
-                        {slot ? (
+                        {slot && slot.className ? (
                           <div>
                             <div className="font-medium text-sm">{slot.className}</div>
-                            <div className="text-xs text-gray-600">{slot.subject}</div>
+                            <div className="text-xs text-gray-600">{slot.subject || ''}</div>
                             {slot.isCoTeaching && (
                               <div className="text-xs text-blue-600">공동수업</div>
                             )}

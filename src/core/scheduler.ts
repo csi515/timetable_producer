@@ -301,14 +301,14 @@ export const generateTimetable = async (
     
     // 고정 수업 적용
     addLog('📌 고정 수업을 적용합니다.', 'info');
-    const fixedClassesApplied = applyFixedClasses(schedule, addLog);
+    const fixedClassesApplied = applyFixedClasses(schedule, data, addLog);
     addLog(`✅ 고정 수업 적용 완료: ${fixedClassesApplied}개 수업`, 'success');
     
     if (setProgress) setProgress(20);
     
     // 공동수업 제약조건 처리
     addLog('👥 공동수업 제약조건을 처리합니다.', 'info');
-    const coTeachingApplied = processCoTeachingConstraints(schedule, addLog);
+    const coTeachingApplied = processCoTeachingConstraints(schedule, data, teacherHours, addLog);
     addLog(`✅ 공동수업 제약조건 처리 완료: ${coTeachingApplied}개 수업`, 'success');
     
     if (setProgress) setProgress(30);
