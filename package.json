@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "PC 환경에 최적화된 전문적인 시간표 제작 도구",
   "main": "index.js",
-  "homepage": "https://your-username.github.io/timetable_producer-main",
+  "homepage": "https://csi515.github.io/timetable_producer",
   "scripts": {
     "start": "webpack serve --mode development --open",
     "build": "webpack --mode production",

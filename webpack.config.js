@@ -10,7 +10,8 @@ module.exports = (env, argv) => {
       path: path.resolve(__dirname, 'dist'),
       filename: 'bundle.js',
       clean: true,
-      publicPath: isProduction ? './' : '/',
+      // GitHub Pages를 위한 publicPath 설정
+      publicPath: isProduction ? '/timetable_producer/' : '/',
     },
     module: {
       rules: [
