@@ -50,7 +50,7 @@ function TeacherSettings({ data, updateData, nextStep, prevStep }) {
         <StatisticsCards teachers={teachers} />
 
         {/* 메인 컨텐츠 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+        <div className="space-y-8 mb-12">
           {/* 교사 추가 폼 */}
           <AddTeacherForm 
             newTeacher={newTeacher}
