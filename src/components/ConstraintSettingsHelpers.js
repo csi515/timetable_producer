@@ -10,6 +10,9 @@ export const getConstraintTypeName = (type) => {
     'class_max_periods': '학급 최대 교시 제한',
     'teacher_mutual_exclusion': '교사 상호 배타',
     'special_room_requirement': '특별실 요구사항',
+    'special_room_capacity': '특별실 용량 제한',
+    'special_room_availability': '특별실 사용 가능 시간',
+    'special_room_class_limit': '학급별 특별실 사용 제한',
     'daily_subject_once': '일일 과목 한 번 제한',
     'teacher_time_conflict': '교사 시간 충돌 방지',
     'class_weekly_hours_limit': '학급 주간 시수 제한',
@@ -138,6 +141,24 @@ export const validateConstraint = (constraint) => {
       if (!constraint.subject) errors.push('- 과목');
       break;
 
+    case 'special_room_capacity':
+      if (!constraint.roomType) errors.push('- 특별실 종류');
+      if (!constraint.maxClasses) errors.push('- 최대 학급 수');
+      break;
+
+    case 'special_room_availability':
+      if (!constraint.roomType) errors.push('- 특별실 종류');
+      if (!constraint.restrictedDays && !constraint.restrictedPeriods) {
+        errors.push('- 제한된 요일 또는 교시');
+      }
+      break;
+
+    case 'special_room_class_limit':
+      if (!constraint.className) errors.push('- 학급');
+      if (!constraint.roomType) errors.push('- 특별실 종류');
+      if (!constraint.maxConcurrent) errors.push('- 최대 동시 사용 학급 수');
+      break;
+
     case 'daily_subject_once':
       if (!constraint.subject) errors.push('- 과목');
       break;
@@ -210,6 +231,21 @@ export const getConstraintTypes = () => {
       value: 'special_room_requirement',
       label: '특별실 요구사항',
       description: '특별실이 필요한 과목의 충돌 방지'
+    },
+    {
+      value: 'special_room_capacity',
+      label: '특별실 용량 제한',
+      description: '특별실별 동시 사용 가능한 학급 수 제한'
+    },
+    {
+      value: 'special_room_availability',
+      label: '특별실 사용 가능 시간',
+      description: '특별실별 사용 가능한 요일/교시 제한'
+    },
+    {
+      value: 'special_room_class_limit',
+      label: '학급별 특별실 사용 제한',
+      description: '특정 학급의 특별실 동시 사용 제한'
     },
     {
       value: 'daily_subject_once',

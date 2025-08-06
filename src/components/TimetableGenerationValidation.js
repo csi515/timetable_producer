@@ -352,9 +352,17 @@ export const validateTeacherMutualExclusions = (schedule, data, addLog) => {
   return violations;
 };
 
-// 과목별 특별실 제약조건 검증
+// 과목별 특별실 제약조건 검증 (개선된 버전)
 export const validateSpecialRoomConstraints = (schedule, data, addLog) => {
   const violations = [];
+  
+  // 특별실 제약조건 가져오기
+  const specialRoomConstraints = (data.constraints?.must || []).filter(c =>
+    c.type === 'special_room_requirement' || c.type === 'special_room_capacity'
+  );
+  
+  // 특별실별 사용 현황 추적
+  const specialRoomUsage = {};
   
   Object.keys(schedule).forEach(className => {
     ['월', '화', '수', '목', '금'].forEach(day => {
@@ -364,38 +372,157 @@ export const validateSpecialRoomConstraints = (schedule, data, addLog) => {
             const subject = data.subjects?.find(s => s.name === slot.subject);
             
             if (subject && subject.requiresSpecialRoom) {
-              // 특별실이 필요한 과목이 같은 시간에 여러 학급에서 배치되었는지 확인
-              let specialRoomConflict = false;
-              let conflictClasses = [];
+              const roomType = subject.specialRoomType || 'default';
+              const timeKey = `${day}-${period}`;
               
-              Object.keys(schedule).forEach(otherClassName => {
-                if (otherClassName !== className && schedule[otherClassName] && schedule[otherClassName][day]) {
-                  const otherSlot = schedule[otherClassName][day][period];
-                  if (otherSlot && typeof otherSlot === 'object' && otherSlot.subject) {
-                    const otherSubject = data.subjects?.find(s => s.name === otherSlot.subject);
-                    if (otherSubject && otherSubject.requiresSpecialRoom) {
-                      specialRoomConflict = true;
-                      conflictClasses.push(otherClassName);
-                    }
-                  }
-                }
-              });
-              
-              if (specialRoomConflict) {
-                violations.push({
-                  type: 'special_room_conflict',
-                  className: className,
-                  day: day,
-                  period: period + 1,
-                  subject: slot.subject,
-                  conflictClasses: conflictClasses
-                });
-                addLog(`⚠️ ${className} ${day}요일 ${period + 1}교시 특별실 충돌: ${slot.subject} (충돌 학급: ${conflictClasses.join(', ')})`, 'warning');
+              if (!specialRoomUsage[timeKey]) {
+                specialRoomUsage[timeKey] = {};
               }
+              if (!specialRoomUsage[timeKey][roomType]) {
+                specialRoomUsage[timeKey][roomType] = [];
+              }
+              
+              specialRoomUsage[timeKey][roomType].push({
+                className: className,
+                subject: slot.subject,
+                roomType: roomType
+              });
             }
           }
         });
       }
+    });
+  });
+  
+  // 특별실 제약조건 검증
+  Object.keys(specialRoomUsage).forEach(timeKey => {
+    const [day, period] = timeKey.split('-');
+    
+    Object.keys(specialRoomUsage[timeKey]).forEach(roomType => {
+      const usage = specialRoomUsage[timeKey][roomType];
+      
+      if (usage.length > 1) {
+        // 1. 기본 충돌 검사 (같은 특별실 동시 사용)
+        const conflictClasses = usage.map(u => u.className);
+        const subjects = usage.map(u => u.subject);
+        
+        violations.push({
+          type: 'special_room_conflict',
+          day: day,
+          period: parseInt(period) + 1,
+          roomType: roomType,
+          conflictClasses: conflictClasses,
+          subjects: subjects,
+          message: `${roomType} 특별실 동시 사용 충돌`
+        });
+        
+        addLog(`⚠️ ${day}요일 ${parseInt(period) + 1}교시 ${roomType} 특별실 충돌: ${conflictClasses.join(', ')} (${subjects.join(', ')})`, 'warning');
+        
+        // 2. 특별실 용량 제한 검사
+        const capacityConstraint = specialRoomConstraints.find(c => 
+          c.type === 'special_room_capacity' && c.roomType === roomType
+        );
+        
+        if (capacityConstraint && capacityConstraint.maxClasses && usage.length > capacityConstraint.maxClasses) {
+          violations.push({
+            type: 'special_room_capacity_exceeded',
+            day: day,
+            period: parseInt(period) + 1,
+            roomType: roomType,
+            currentClasses: usage.length,
+            maxClasses: capacityConstraint.maxClasses,
+            conflictClasses: conflictClasses,
+            message: `${roomType} 특별실 용량 초과`
+          });
+          
+          addLog(`🚫 ${day}요일 ${parseInt(period) + 1}교시 ${roomType} 특별실 용량 초과: ${usage.length}개 학급/${capacityConstraint.maxClasses}개 학급`, 'error');
+        }
+        
+        // 3. 학급별 특별실 사용 제한 검사
+        usage.forEach(usageItem => {
+          const classConstraint = specialRoomConstraints.find(c => 
+            c.type === 'special_room_requirement' && 
+            c.className === usageItem.className && 
+            c.roomType === roomType
+          );
+          
+          if (classConstraint && classConstraint.maxConcurrent && usage.length > classConstraint.maxConcurrent) {
+            violations.push({
+              type: 'special_room_class_limit_exceeded',
+              className: usageItem.className,
+              day: day,
+              period: parseInt(period) + 1,
+              roomType: roomType,
+              currentClasses: usage.length,
+              maxConcurrent: classConstraint.maxConcurrent,
+              message: `${usageItem.className}의 ${roomType} 특별실 동시 사용 제한 초과`
+            });
+            
+            addLog(`🚫 ${usageItem.className} ${day}요일 ${parseInt(period) + 1}교시 ${roomType} 특별실 동시 사용 제한 초과: ${usage.length}개 학급/${classConstraint.maxConcurrent}개 학급`, 'error');
+          }
+        });
+      }
+    });
+  });
+  
+  return violations;
+};
+
+// 특별실 사용 가능 시간 검증
+export const validateSpecialRoomAvailability = (schedule, data, addLog) => {
+  const violations = [];
+  
+  const availabilityConstraints = (data.constraints?.must || []).filter(c =>
+    c.type === 'special_room_availability'
+  );
+  
+  availabilityConstraints.forEach(constraint => {
+    const roomType = constraint.roomType;
+    const restrictedDays = constraint.restrictedDays || [];
+    const restrictedPeriods = constraint.restrictedPeriods || [];
+    
+    Object.keys(schedule).forEach(className => {
+      ['월', '화', '수', '목', '금'].forEach(day => {
+        if (schedule[className] && schedule[className][day]) {
+          schedule[className][day].forEach((slot, period) => {
+            if (slot && typeof slot === 'object' && slot.subject) {
+              const subject = data.subjects?.find(s => s.name === slot.subject);
+              
+              if (subject && subject.requiresSpecialRoom && subject.specialRoomType === roomType) {
+                // 제한된 요일 검사
+                if (restrictedDays.includes(day)) {
+                  violations.push({
+                    type: 'special_room_day_restriction',
+                    className: className,
+                    day: day,
+                    period: period + 1,
+                    roomType: roomType,
+                    subject: slot.subject,
+                    message: `${roomType} 특별실 ${day}요일 사용 제한`
+                  });
+                  
+                  addLog(`🚫 ${className} ${day}요일 ${period + 1}교시 ${roomType} 특별실 사용 제한: ${slot.subject}`, 'error');
+                }
+                
+                // 제한된 교시 검사
+                if (restrictedPeriods.includes(period + 1)) {
+                  violations.push({
+                    type: 'special_room_period_restriction',
+                    className: className,
+                    day: day,
+                    period: period + 1,
+                    roomType: roomType,
+                    subject: slot.subject,
+                    message: `${roomType} 특별실 ${period + 1}교시 사용 제한`
+                  });
+                  
+                  addLog(`🚫 ${className} ${day}요일 ${period + 1}교시 ${roomType} 특별실 사용 제한: ${slot.subject}`, 'error');
+                }
+              }
+            }
+          });
+        }
+      });
     });
   });
   

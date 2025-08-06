@@ -40,8 +40,14 @@ PC 환경에 최적화된 전문적인 시간표 제작 도구입니다. 교사 
 ### 온라인 사용 (추천)
 GitHub Pages에서 바로 사용할 수 있습니다:
 ```
-https://your-username.github.io/timetable_producer-main/
+https://csi515.github.io/timetable_producer/
 ```
+
+### 성능 최적화 (v1.1.0)
+- **코드 분할**: React, DND, ExcelJS 등 라이브러리를 별도 청크로 분리
+- **지연 로딩**: ExcelJS는 필요할 때만 로드되어 초기 로딩 속도 개선
+- **번들 최적화**: 1.4MB 단일 파일에서 463KB 메인 번들로 크기 감소
+- **캐싱 최적화**: 라이브러리별 청크 분리로 브라우저 캐싱 효율성 향상
 
 ### 로컬 설치 및 실행
 
