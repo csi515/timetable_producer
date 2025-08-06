@@ -40,13 +40,11 @@ module.exports = (env, argv) => {
       ],
     },
     plugins: [
-      // 개발 환경에서도 루트의 index.html 사용
-      ...(isProduction ? [] : [
-        new HtmlWebpackPlugin({
-          template: './index.html',
-          filename: 'index.html',
-        }),
-      ]),
+      // 모든 환경에서 HtmlWebpackPlugin 사용
+      new HtmlWebpackPlugin({
+        template: './index.html',
+        filename: 'index.html',
+      }),
     ],
     devServer: {
       port: 3000,
