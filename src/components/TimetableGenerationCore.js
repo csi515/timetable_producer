@@ -1,7 +1,7 @@
 // 시간표 생성 핵심 로직 함수들
 
 // 사용 가능한 슬롯 찾기
-export const findAvailableSlots = (schedule, className, teacher, subjectName, isCoTeaching = false) => {
+export const findAvailableSlots = (schedule, className, teacher, subjectName, isCoTeaching = false, data = null) => {
   const availableSlots = [];
   const days = ['월', '화', '수', '목', '금'];
   
@@ -24,15 +24,48 @@ export const findAvailableSlots = (schedule, className, teacher, subjectName, is
           }
           
           // 학급별 전체 시수 제한 확인
-          const classWeeklyCheck = checkClassWeeklyHoursLimit(className, schedule);
+          const classWeeklyCheck = checkClassWeeklyHoursLimit(className, schedule, data);
           if (!classWeeklyCheck.allowed) {
             return;
           }
           
           // 학급별 일일 시수 제한 확인
-          const classDailyCheck = checkClassDailyHoursLimit(className, day, schedule);
+          const classDailyCheck = checkClassDailyHoursLimit(className, day, schedule, data);
           if (!classDailyCheck.allowed) {
             return;
+          }
+          
+          // 교사 간 동시 수업 제약조건 확인
+          if (data && data.constraints) {
+            const mutualExclusions = [
+              ...(data.constraints.must || []).filter(c => c.type === 'teacher_mutual_exclusion'),
+              ...(data.constraints.optional || []).filter(c => c.type === 'teacher_mutual_exclusion')
+            ];
+            
+            for (const constraint of mutualExclusions) {
+              const teacher1 = constraint.teacher1;
+              const teacher2 = constraint.teacher2;
+              
+              // 현재 교사가 제약조건에 포함되어 있는지 확인
+              if (teacher.name === teacher1 || teacher.name === teacher2) {
+                const otherTeacher = teacher.name === teacher1 ? teacher2 : teacher1;
+                
+                // 다른 교사가 같은 시간에 수업 중인지 확인
+                let otherTeacherTeaching = false;
+                Object.keys(schedule).forEach(otherClassName => {
+                  if (schedule[otherClassName] && schedule[otherClassName][day]) {
+                    const otherSlot = schedule[otherClassName][day][slotIndex];
+                    if (otherSlot && typeof otherSlot === 'object' && otherSlot.teachers && otherSlot.teachers.includes(otherTeacher)) {
+                      otherTeacherTeaching = true;
+                    }
+                  }
+                });
+                
+                if (otherTeacherTeaching) {
+                  return; // 제약조건 위반
+                }
+              }
+            }
           }
           
           // 다른 학급에서 같은 시간에 수업 중인지 확인

@@ -172,17 +172,35 @@ export const processCoTeachingConstraints = (
           };
 
           // 시수 업데이트
-          if (teacherHours[mainTeacher]) {
-            teacherHours[mainTeacher].current++;
-            teacherHours[mainTeacher].subjects[targetSubject] = 
-              (teacherHours[mainTeacher].subjects[targetSubject] || 0) + 1;
+          if (!teacherHours[mainTeacher]) {
+            teacherHours[mainTeacher] = {
+              current: 0,
+              max: 25,
+              subjects: {},
+              classHours: {}
+            };
           }
+          teacherHours[mainTeacher].current++;
+          if (!teacherHours[mainTeacher].subjects) {
+            teacherHours[mainTeacher].subjects = {};
+          }
+          teacherHours[mainTeacher].subjects[targetSubject] = 
+            (teacherHours[mainTeacher].subjects[targetSubject] || 0) + 1;
 
-          if (teacherHours[selectedCoTeacher.name]) {
-            teacherHours[selectedCoTeacher.name].current++;
-            teacherHours[selectedCoTeacher.name].subjects[targetSubject] = 
-              (teacherHours[selectedCoTeacher.name].subjects[targetSubject] || 0) + 1;
+          if (!teacherHours[selectedCoTeacher.name]) {
+            teacherHours[selectedCoTeacher.name] = {
+              current: 0,
+              max: 25,
+              subjects: {},
+              classHours: {}
+            };
           }
+          teacherHours[selectedCoTeacher.name].current++;
+          if (!teacherHours[selectedCoTeacher.name].subjects) {
+            teacherHours[selectedCoTeacher.name].subjects = {};
+          }
+          teacherHours[selectedCoTeacher.name].subjects[targetSubject] = 
+            (teacherHours[selectedCoTeacher.name].subjects[targetSubject] || 0) + 1;
 
           // 부교사 참여 카운터 업데이트
           coTeacherParticipation[selectedCoTeacher.name]++;

@@ -8,7 +8,8 @@ export const getConstraintTypeName = (type) => {
     'specific_teacher_co_teaching': '특정 교사 공동수업',
     'subject_fixed_only': '과목 고정 수업만',
     'class_max_periods': '학급 최대 교시 제한',
-    'teacher_mutual_exclusion': '교사 상호 배타',
+    'teacher_mutual_exclusion': '교사 간 동시 수업 제약조건',
+    'sequential_grade_teaching': '학년별 순차 수업 배정 제약조건',
     'special_room_requirement': '특별실 요구사항',
     'special_room_capacity': '특별실 용량 제한',
     'special_room_availability': '특별실 사용 가능 시간',
@@ -53,7 +54,7 @@ export const loadDefaultConstraints = () => {
 };
 
 // 조건 추가 함수
-export const addConstraint = (constraints, newConstraint, priority, updateData) => {
+export const addConstraint = (constraints, newConstraint, priority) => {
   if (!newConstraint.type) {
     alert('조건 타입을 선택해주세요.');
     return;
@@ -76,17 +77,15 @@ export const addConstraint = (constraints, newConstraint, priority, updateData) 
     [priority]: [...(constraints[priority] || []), constraint]
   };
 
-  updateData('constraints', updatedConstraints);
   return updatedConstraints;
 };
 
 // 조건 삭제 함수
-export const removeConstraint = (constraints, priority, index, updateData) => {
+export const removeConstraint = (constraints, priority, index) => {
   const updatedConstraints = {
     ...constraints,
     [priority]: constraints[priority].filter((_, i) => i !== index)
   };
-  updateData('constraints', updatedConstraints);
   return updatedConstraints;
 };
 
@@ -177,6 +176,11 @@ export const validateConstraint = (constraint) => {
       if (!constraint.maxHours) errors.push('- 최대 시수');
       break;
 
+    case 'sequential_grade_teaching':
+      if (!constraint.teacher) errors.push('- 교사');
+      if (!constraint.subjects || constraint.subjects.length === 0) errors.push('- 담당 과목');
+      break;
+
     default:
       errors.push('- 알 수 없는 제약조건 타입');
   }
@@ -224,8 +228,8 @@ export const getConstraintTypes = () => {
     },
     {
       value: 'teacher_mutual_exclusion',
-      label: '교사 상호 배타',
-      description: '두 교사가 같은 시간에 수업할 수 없음'
+      label: '교사 간 동시 수업 제약조건',
+      description: '특정 교사들이 같은 시간에 수업할 수 없도록 제한'
     },
     {
       value: 'special_room_requirement',
@@ -266,6 +270,11 @@ export const getConstraintTypes = () => {
       value: 'teacher_weekly_hours_limit',
       label: '교사 주간 시수 제한',
       description: '특정 교사의 주간 총 수업 시간 제한'
+    },
+    {
+      value: 'sequential_grade_teaching',
+      label: '학년별 순차 수업 배정 제약조건',
+      description: '특정 교사가 학년별로 순차적으로 수업을 배정받도록 제한'
     }
   ];
 };

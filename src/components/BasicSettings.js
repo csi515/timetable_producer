@@ -410,7 +410,7 @@ function BasicSettings({ data, updateData, nextStep, prevStep }) {
           </h3>
         </div>
         
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+        <div className="space-y-8">
           {/* 학급 구성 */}
           <div className="section-card">
             <h4 className="font-bold mb-6 text-gray-700 text-xl flex items-center">

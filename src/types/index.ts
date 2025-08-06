@@ -118,6 +118,7 @@ export interface ValidationResult {
   conflictClass?: string; // 충돌하는 학급명
   conflictSubject?: string; // 충돌하는 과목명
   conflictTeacher?: string; // 충돌하는 교사명
+  consecutiveCount?: number; // 연속 수업 횟수
 }
 
 // 교사 시수 추적 타입
@@ -156,6 +157,10 @@ export interface PlacementPlan {
   subject: string;
   availableTeachers: Teacher[];
   priority: number;
+  targetHours?: number; // 목표 시수
+  currentHours?: number; // 현재 시수
+  remainingHours?: number; // 남은 시수
+  isClassWeeklyHoursSetting?: boolean; // 학급별 주간시수 설정 여부
 }
 
 // 사용 가능한 슬롯 타입

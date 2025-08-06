@@ -183,21 +183,6 @@ export const initializeSchedule = (data: TimetableData): Schedule => {
   return schedule;
 };
 
-// 배치 계획 생성 함수
-export const createPlacementPlan = (
-  className: string,
-  subject: string,
-  availableTeachers: Teacher[],
-  priority: number
-) => {
-  return {
-    className,
-    subject,
-    availableTeachers,
-    priority
-  };
-};
-
 // 배치 계획 실행 함수 (엄격한 제약조건)
 export const executePlacementPlanStrict = (
   schedule: Schedule,
@@ -206,7 +191,15 @@ export const executePlacementPlanStrict = (
   teacherHours: TeacherHoursTracker,
   addLog: (message: string, type?: string) => void
 ): boolean => {
-  const { className, subject, availableTeachers } = placementPlan;
+  // placementPlan이 배열인 경우 첫 번째 항목을 사용
+  const plan = Array.isArray(placementPlan) ? placementPlan[0] : placementPlan;
+  
+  if (!plan) {
+    addLog('경고: 배치 계획이 비어있습니다.', 'warning');
+    return false;
+  }
+  
+  const { className, subject, availableTeachers } = plan;
   
   // 사용 가능한 슬롯 찾기
   const availableSlots = findAvailableSlots(schedule, className, availableTeachers[0], subject);

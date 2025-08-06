@@ -46,6 +46,131 @@ export const checkTeacherTimeConflict = (
   return { allowed: true };
 };
 
+// 제약조건 우선순위 정의
+export const CONSTRAINT_PRIORITY = {
+  CRITICAL: 1,      // 절대 위반 불가 (교사 중복, 불가능 시간)
+  HIGH: 2,          // 높은 우선순위 (시수 제한, 특별실)
+  MEDIUM: 3,        // 중간 우선순위 (블록제, 공동수업)
+  LOW: 4,           // 낮은 우선순위 (선호도, 순차 수업)
+  OPTIONAL: 5       // 선택적 제약조건
+};
+
+// 강화된 슬롯 검증 함수
+export const validateSlotPlacementStrict = (
+  schedule: Schedule,
+  className: string,
+  day: string,
+  period: number,
+  teacher: Teacher,
+  subject: string,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void,
+  priorityLevel: number = CONSTRAINT_PRIORITY.CRITICAL
+): { allowed: boolean; violations: string[]; priority: number } => {
+  const violations: string[] = [];
+  const slotIndex = period - 1;
+  
+  // 1. 기본 슬롯 점유 확인 (CRITICAL)
+  if (!schedule[className] || !schedule[className][day]) {
+    violations.push(`슬롯 검증 실패: ${className} ${day}요일 스케줄이 존재하지 않습니다.`);
+    return { allowed: false, violations, priority: CONSTRAINT_PRIORITY.CRITICAL };
+  }
+  
+  const currentSlot = schedule[className][day][slotIndex];
+  if (currentSlot !== '' && currentSlot !== undefined && currentSlot !== null) {
+    violations.push(`슬롯 검증 실패: ${className} ${day}요일 ${period}교시가 이미 점유되어 있습니다.`);
+    return { allowed: false, violations, priority: CONSTRAINT_PRIORITY.CRITICAL };
+  }
+  
+  // 2. 교사 중복 배치 확인 (CRITICAL) - 절대 위반 불가
+  const teacherConflictCheck = checkTeacherTimeConflict(schedule, teacher.name, day, period, className);
+  if (!teacherConflictCheck.allowed) {
+    violations.push(teacherConflictCheck.message || `교사 중복 배정: ${teacher.name}`);
+    return { allowed: false, violations, priority: CONSTRAINT_PRIORITY.CRITICAL };
+  }
+  
+  // 3. 교사 불가능 시간 확인 (CRITICAL) - 절대 위반 불가
+  const unavailableCheck = checkTeacherUnavailable(teacher, day, period);
+  if (!unavailableCheck.allowed) {
+    violations.push(unavailableCheck.message || `교사 불가능 시간: ${teacher.name} ${day} ${period}교시`);
+    return { allowed: false, violations, priority: CONSTRAINT_PRIORITY.CRITICAL };
+  }
+  
+  // 4. 교사 상호 배제 확인 (CRITICAL) - 절대 위반 불가
+  if (priorityLevel <= CONSTRAINT_PRIORITY.CRITICAL) {
+    const mutualExclusionCheck = checkTeacherMutualExclusion(schedule, teacher.name, day, period, data, className);
+    if (!mutualExclusionCheck.allowed) {
+      violations.push(mutualExclusionCheck.message || `교사 상호 배제 위반: ${teacher.name}`);
+      return { allowed: false, violations, priority: CONSTRAINT_PRIORITY.CRITICAL };
+    }
+  }
+  
+  // 5. 교사 3연속 수업 확인 (HIGH) - 교사 부담 고려
+  if (priorityLevel <= CONSTRAINT_PRIORITY.HIGH) {
+    const consecutiveCheck = checkTeacherConsecutiveTeaching(schedule, teacher.name, day, period, className);
+    if (!consecutiveCheck.allowed) {
+      violations.push(consecutiveCheck.message || `교사 3연속 수업 위반: ${teacher.name}`);
+      return { allowed: false, violations, priority: CONSTRAINT_PRIORITY.HIGH };
+    }
+  }
+  
+  // 6. 교사 학급별 시수 제한 확인 (HIGH)
+  if (priorityLevel <= CONSTRAINT_PRIORITY.HIGH) {
+    const classHoursCheck = checkTeacherClassHoursLimit(teacher, className, schedule, subject, data);
+    if (!classHoursCheck.allowed) {
+      violations.push(classHoursCheck.message || `교사 학급별 시수 제한: ${teacher.name} ${className}`);
+      return { allowed: false, violations, priority: CONSTRAINT_PRIORITY.HIGH };
+    }
+  }
+  
+  // 7. 학급별 주간 시수 제한 확인 (HIGH)
+  if (priorityLevel <= CONSTRAINT_PRIORITY.HIGH) {
+    const weeklyHoursCheck = checkClassWeeklyHoursLimit(className, schedule, data);
+    if (!weeklyHoursCheck.allowed) {
+      violations.push(weeklyHoursCheck.message || `학급별 주간 시수 제한: ${className}`);
+      return { allowed: false, violations, priority: CONSTRAINT_PRIORITY.HIGH };
+    }
+  }
+  
+  // 8. 학급별 일일 시수 제한 확인 (HIGH)
+  if (priorityLevel <= CONSTRAINT_PRIORITY.HIGH) {
+    const dailyHoursCheck = checkClassDailyHoursLimit(className, day, schedule, data);
+    if (!dailyHoursCheck.allowed) {
+      violations.push(dailyHoursCheck.message || `학급별 일일 시수 제한: ${className} ${day}요일`);
+      return { allowed: false, violations, priority: CONSTRAINT_PRIORITY.HIGH };
+    }
+  }
+  
+  // 9. 블록제 수업 요구사항 확인 (MEDIUM)
+  if (priorityLevel <= CONSTRAINT_PRIORITY.MEDIUM) {
+    const blockPeriodCheck = checkBlockPeriodRequirement(schedule, className, day, period, teacher.name, data, subject);
+    if (!blockPeriodCheck.allowed) {
+      violations.push(blockPeriodCheck.message || `블록제 수업 요구사항: ${teacher.name}`);
+      return { allowed: false, violations, priority: CONSTRAINT_PRIORITY.MEDIUM };
+    }
+  }
+  
+  // 10. 학년별 순차 수업 확인 (MEDIUM)
+  if (priorityLevel <= CONSTRAINT_PRIORITY.MEDIUM) {
+    const sequentialCheck = checkSequentialGradeTeaching(schedule, teacher.name, day, period, className, data);
+    if (!sequentialCheck.allowed) {
+      violations.push(sequentialCheck.message || `학년별 순차 수업 위반: ${teacher.name}`);
+      return { allowed: false, violations, priority: CONSTRAINT_PRIORITY.MEDIUM };
+    }
+  }
+  
+  // 11. 과목별 고정 수업 확인 (LOW)
+  if (priorityLevel <= CONSTRAINT_PRIORITY.LOW) {
+    const fixedOnlyCheck = checkSubjectFixedOnly(subject, data);
+    if (fixedOnlyCheck) {
+      violations.push(`과목 고정 수업 위반: ${subject}는 고정 수업으로만 배치 가능합니다.`);
+      return { allowed: false, violations, priority: CONSTRAINT_PRIORITY.LOW };
+    }
+  }
+  
+  return { allowed: true, violations: [], priority: 0 };
+};
+
 // 교사별 수업 불가 시간 확인 (엄격한 검증)
 export const checkTeacherUnavailable = (
   teacher: Teacher, 
@@ -209,7 +334,7 @@ export const checkClassDailyHoursLimit = (
   return { allowed: true };
 };
 
-// 슬롯 배치 전 최종 중복 검증 (엄격한 검증)
+// 강화된 슬롯 검증 함수
 export const validateSlotPlacement = (
   schedule: Schedule,
   className: string,
@@ -234,110 +359,91 @@ export const validateSlotPlacement = (
     return false;
   }
   
-  // 2. 교사 중복 배치 확인 (같은 교시에 다른 학급에서 수업하는지) - 엄격한 검증
-  for (const otherClassName of Object.keys(schedule)) {
-    if (otherClassName !== className && schedule[otherClassName] && schedule[otherClassName][day]) {
-      const otherSlot = schedule[otherClassName][day][slotIndex];
-      if (otherSlot && typeof otherSlot === 'object' && 'teachers' in otherSlot && otherSlot.teachers.includes(teacher.name)) {
-        addLog(`❌ 슬롯 검증 실패: ${teacher.name} 교사가 ${day}요일 ${period}교시에 ${otherClassName}에서 이미 수업 중입니다.`, 'error');
-        return false;
-      }
-    }
+  // 2. 교사 중복 배치 확인 (절대 위반 불가)
+  const teacherConflictCheck = checkTeacherTimeConflict(schedule, teacher.name, day, period, className);
+  if (!teacherConflictCheck.allowed) {
+    addLog(`❌ 교사 중복 배정: ${teacherConflictCheck.message}`, 'error');
+    return false;
   }
   
-  // 3. 교사 불가능 시간 확인 - 엄격한 검증
+  // 3. 교사 불가능 시간 확인 (절대 위반 불가)
   const unavailableCheck = checkTeacherUnavailable(teacher, day, period);
   if (!unavailableCheck.allowed) {
-    addLog(`❌ 슬롯 검증 실패: ${unavailableCheck.message}`, 'error');
+    addLog(`❌ 교사 불가능 시간: ${unavailableCheck.message}`, 'error');
     return false;
   }
   
-  // 4. 교사 학급별 시수 제한 확인 - 엄격한 검증 (교과과목만 적용)
-  const classHoursCheck = checkTeacherClassHoursLimit(teacher, className, schedule, subject, data);
-  if (!classHoursCheck.allowed) {
-    addLog(`❌ 슬롯 검증 실패: ${classHoursCheck.message}`, 'error');
-    return false;
-  }
-  
-  // 5. 학급별 주간 수업 시수 제한 확인 - 엄격한 검증
-  const weeklyHoursCheck = checkClassWeeklyHoursLimit(className, schedule, data);
-  if (!weeklyHoursCheck.allowed) {
-    addLog(`❌ 슬롯 검증 실패: ${weeklyHoursCheck.message}`, 'error');
-    return false;
-  }
-  
-  // 6. 학급 같은 날짜 같은 과목 중복 확인 (일일 과목 1회 제한)
-  const dailySubjectOnceConstraints = [
-    ...(data.constraints?.must || []).filter(c => c.type === 'class_daily_subject_once'),
-    ...(data.constraints?.optional || []).filter(c => c.type === 'class_daily_subject_once')
-  ];
-  
-  if (dailySubjectOnceConstraints.length > 0) {
-    let subjectAlreadyScheduled = false;
-    if (schedule[className][day]) {
-      Object.values(schedule[className][day]).forEach(slot => {
-        if (slot && typeof slot === 'object' && 'subject' in slot && slot.subject === subject) {
-          subjectAlreadyScheduled = true;
-        }
-      });
-    }
-    
-    if (subjectAlreadyScheduled) {
-      const hasAllSubjectsConstraint = dailySubjectOnceConstraints.some(c => c.subject === 'all');
-      if (hasAllSubjectsConstraint) {
-        addLog(`❌ 슬롯 검증 실패: ${className} ${day}요일에 ${subject} 과목이 이미 배치되어 있습니다 (일일 과목 1회 제한).`, 'error');
-        return false;
-      }
-    }
-  }
-  
-  // 7. 블록제 수업 제약조건 확인
-  const blockPeriodConstraints = data.constraints?.must?.filter(c => c.type === 'block_period_requirement') || [];
-  const isBlockPeriodTeacher = blockPeriodConstraints.some(c => c.subject === teacher.name);
-  
-  if (isBlockPeriodTeacher) {
-    const blockCheck = checkBlockPeriodRequirement(schedule, className, day, period, teacher.name, data, subject);
-    if (!blockCheck.allowed) {
-      addLog(`❌ 슬롯 검증 실패: ${blockCheck.message}`, 'error');
-      return false;
-    }
-  }
-  
-  // 8. 교사 간 동시 수업 제약조건 확인
+  // 4. 교사 상호 배제 확인 (절대 위반 불가)
   const mutualExclusionCheck = checkTeacherMutualExclusion(schedule, teacher.name, day, period, data, className);
   if (!mutualExclusionCheck.allowed) {
-    addLog(`❌ 슬롯 검증 실패: ${mutualExclusionCheck.message}`, 'error');
+    addLog(`❌ 교사 상호 배제 위반: ${mutualExclusionCheck.message}`, 'error');
     return false;
   }
   
-  // 9. 학년별 순차 수업 배정 제약조건 확인
-  const sequentialGradeCheck = checkSequentialGradeTeaching(schedule, teacher.name, day, period, className, data);
-  if (!sequentialGradeCheck.allowed) {
-    addLog(`❌ 슬롯 검증 실패: ${sequentialGradeCheck.message}`, 'error');
+  // 5. 블록제 요구사항 확인 (강화된 검증)
+  const blockCheck = checkBlockPeriodRequirement(schedule, className, day, period, teacher.name, data, subject);
+  if (!blockCheck.allowed) {
+    addLog(`❌ 블록제 요구사항 위반: ${blockCheck.message}`, 'error');
     return false;
   }
   
-  // 10. 특별실 제약조건 확인
+  // 6. 교사 주간시수 제한 확인 (강화된 검증)
+  const classKey = convertClassNameToKey(className);
+  const currentHours = getCurrentTeacherHours(schedule, teacher.name, className, data);
+  const maxHours = teacher.classWeeklyHours?.[className] || 
+                  teacher.weeklyHoursByGrade?.[classKey] || 
+                  teacher.max_hours_per_week || 
+                  teacher.maxHours || 
+                  22;
+
+  // 0시간으로 설정된 학급에는 절대 배정하지 않음
+  const hasZeroHours = (teacher.classWeeklyHours && teacher.classWeeklyHours[className] === 0) ||
+                      (teacher.weeklyHoursByGrade && teacher.weeklyHoursByGrade[classKey] === 0);
+
+  if (hasZeroHours) {
+    addLog(`❌ 교사 배정 불가: ${teacher.name} 교사는 ${className}에서 0시간으로 설정되어 있어 배정할 수 없습니다.`, 'error');
+    return false;
+  }
+
+  if (currentHours >= maxHours) {
+    addLog(`❌ 교사 시수 제한 초과: ${teacher.name} 교사가 ${className}에서 최대 시수(${maxHours}시간)에 도달했습니다. (현재: ${currentHours}시간)`, 'error');
+    return false;
+  }
+  
+  // 7. 교사 전체 시수 제한 확인
+  const currentTotalHours = getCurrentTeacherHours(schedule, teacher.name, undefined, data);
+  const maxTotalHours = teacher.max_hours_per_week || teacher.maxHours || 22;
+  
+  if (currentTotalHours >= maxTotalHours) {
+    addLog(`❌ 교사 전체 시수 제한 초과: ${teacher.name} 교사가 전체 최대 시수(${maxTotalHours}시간)에 도달했습니다. (현재: ${currentTotalHours}시간)`, 'error');
+    return false;
+  }
+  
+  // 8. 과목별 제약조건 확인
   const subjectData = data.subjects?.find(s => s.name === subject);
-  if (subjectData?.is_space_limited) {
-    // 같은 시간에 다른 학급에서 특별실을 사용하는 과목이 있는지 확인
-    let specialRoomConflict = false;
-    for (const otherClassName of Object.keys(schedule)) {
-      if (otherClassName !== className && schedule[otherClassName] && schedule[otherClassName][day]) {
-        const otherSlot = schedule[otherClassName][day][slotIndex];
-        if (otherSlot && typeof otherSlot === 'object' && 'subject' in otherSlot) {
-          const otherSubject = data.subjects?.find(s => s.name === otherSlot.subject);
-          if (otherSubject?.is_space_limited) {
-            specialRoomConflict = true;
-            break;
-          }
-        }
-      }
+  if (subjectData) {
+    // 과목이 특정 시간에만 배치 가능한지 확인
+    if (subjectData.is_space_limited) {
+      // 특별실이 필요한 과목의 경우 추가 검증 로직
+      addLog(`ℹ️ 특별실 과목 배정: ${subject}`, 'info');
     }
     
-    if (specialRoomConflict) {
-      addLog(`❌ 슬롯 검증 실패: ${className} ${day}요일 ${period}교시에 특별실을 사용하는 다른 과목이 이미 배치되어 있습니다.`, 'error');
-      return false;
+    // 과목의 최대 동시 수업 수 확인
+    if (subjectData.max_classes_at_once) {
+      const currentSubjectCount = Object.keys(schedule).reduce((count, className) => {
+        if (schedule[className] && schedule[className][day] && schedule[className][day][slotIndex]) {
+          const slot = schedule[className][day][slotIndex];
+          if (slot && typeof slot === 'object' && slot.subject === subject) {
+            return count + 1;
+          }
+        }
+        return count;
+      }, 0);
+      
+      if (currentSubjectCount >= subjectData.max_classes_at_once) {
+        addLog(`❌ 과목 동시 수업 수 제한: ${subject}는 최대 ${subjectData.max_classes_at_once}개 학급에서만 동시에 수업할 수 있습니다.`, 'error');
+        return false;
+      }
     }
   }
   
@@ -531,15 +637,21 @@ export const checkBlockPeriodRequirement = (
   data: TimetableData,
   subjectName?: string // 특정 과목명을 받을 수 있도록 추가
 ): ValidationResult => {
-  // 블록제 교사인지 확인 (제약조건에서 해당 교사가 블록제로 설정되어 있는지 확인)
+  // 1. 과목의 block 속성 확인 (최우선)
+  let isBlockSubject = false;
+  if (subjectName) {
+    const subject = data.subjects?.find(s => s.name === subjectName);
+    isBlockSubject = subject?.block === true;
+  }
+  
+  // 2. 교사의 블록제 설정 확인 (제약조건에서)
   const blockPeriodConstraints = data.constraints?.must?.filter(c => c.type === 'block_period_requirement') || [];
   const isBlockPeriodTeacher = blockPeriodConstraints.some(c => c.subject === teacherName);
   
-  if (!isBlockPeriodTeacher) {
-    return { allowed: true }; // 해당 교사가 블록제 교사가 아님
+  // 블록제가 아닌 경우 통과
+  if (!isBlockSubject && !isBlockPeriodTeacher) {
+    return { allowed: true };
   }
-
-  // 블록제 교사인 경우, 같은 반에서 연속된 두 교시가 필요
 
   // 블록제 수업인 경우, 같은 반에서 연속된 두 교시가 필요
   const slotIndex = period - 1;
@@ -552,7 +664,7 @@ export const checkBlockPeriodRequirement = (
     return {
       allowed: false,
       reason: 'block_period_even',
-      message: `${teacherName} 교사의 블록제 수업이므로 홀수 교시(1, 3, 5, 7교시)에만 배치할 수 있습니다.`
+      message: `${subjectName || teacherName}의 블록제 수업이므로 홀수 교시(1, 3, 5, 7교시)에만 배치할 수 있습니다.`
     };
   }
 
@@ -562,7 +674,7 @@ export const checkBlockPeriodRequirement = (
     return {
       allowed: false,
       reason: 'block_period_no_next',
-      message: `${teacherName} 교사의 블록제 수업이므로 마지막 교시에는 배치할 수 없습니다.`
+      message: `${subjectName || teacherName}의 블록제 수업이므로 마지막 교시에는 배치할 수 없습니다.`
     };
   }
 
@@ -574,7 +686,7 @@ export const checkBlockPeriodRequirement = (
     return {
       allowed: false,
       reason: 'block_period_current_occupied',
-      message: `${teacherName} 교사의 블록제 수업을 위해 ${className}의 현재 교시(${period}교시)가 비어있어야 합니다.`
+      message: `${subjectName || teacherName}의 블록제 수업을 위해 ${className}의 현재 교시(${period}교시)가 비어있어야 합니다.`
     };
   }
   
@@ -582,7 +694,7 @@ export const checkBlockPeriodRequirement = (
     return {
       allowed: false,
       reason: 'block_period_next_occupied',
-      message: `${teacherName} 교사의 블록제 수업이므로 ${className}의 다음 교시(${period + 1}교시)가 비어있어야 합니다.`
+      message: `${subjectName || teacherName}의 블록제 수업이므로 ${className}의 다음 교시(${period + 1}교시)가 비어있어야 합니다.`
     };
   }
 
@@ -613,12 +725,20 @@ export const placeBlockPeriodSubject = (
   const slotIndex = period - 1;
   const nextSlotIndex = period; // 다음 교시
 
-  // 블록제 교사인지 확인 (제약조건에서 해당 교사가 블록제로 설정되어 있는지 확인)
+  // 1. 과목의 block 속성 확인 (최우선)
+  let isBlockSubject = false;
+  if (subjectName) {
+    const subject = data.subjects?.find(s => s.name === subjectName);
+    isBlockSubject = subject?.block === true;
+  }
+  
+  // 2. 교사의 블록제 설정 확인 (제약조건에서)
   const blockPeriodConstraints = data.constraints?.must?.filter(c => c.type === 'block_period_requirement') || [];
   const isBlockPeriodTeacher = blockPeriodConstraints.some(c => c.subject === teacherName);
   
-  if (!isBlockPeriodTeacher) {
-    return false; // 해당 교사가 블록제 교사가 아님
+  // 블록제가 아닌 경우 일반 배치
+  if (!isBlockSubject && !isBlockPeriodTeacher) {
+    return false;
   }
 
   // 교사가 해당 과목을 가르칠 수 있는지 확인 (subjectName이 제공된 경우에만)
@@ -626,45 +746,28 @@ export const placeBlockPeriodSubject = (
     return false;
   }
 
-  // 현재 교시와 다음 교시가 모두 비어있는지 엄격히 확인
-  const currentSlot = schedule[className]?.[day]?.[slotIndex];
-  const nextSlot = schedule[className]?.[day]?.[nextSlotIndex];
-  
-  if (currentSlot && typeof currentSlot === 'object' && currentSlot.subject) {
-    return false; // 현재 교시가 이미 사용 중
+  // 블록제 검증
+  const blockValidation = checkBlockPeriodRequirement(schedule, className, day, period, teacherName, data, subjectName);
+  if (!blockValidation.allowed) {
+    return false;
   }
-  
-  if (nextSlot && typeof nextSlot === 'object' && nextSlot.subject) {
-    return false; // 다음 교시가 이미 사용 중
-  }
-
-  // 교사 시간 중복 확인 (다음 교시)
-  const teacherConflictNext = checkTeacherTimeConflict(schedule, teacherName, day, period + 1, className);
-  if (!teacherConflictNext.allowed) {
-    return false; // 교사가 다음 교시에 다른 학급에서 수업 중
-  }
-
-  // 과목명 결정 (제공된 과목명 또는 교사의 첫 번째 과목)
-  const finalSubjectName = subjectName || teacher.subjects[0] || '';
 
   // 현재 교시 배치
   schedule[className][day][slotIndex] = {
-    subject: finalSubjectName,
-    teachers: [teacher.name],
+    subject: subjectName || teacher.subjects[0],
+    teachers: [teacherName],
     isCoTeaching: false,
     isFixed: false,
     isBlockPeriod: true,
-    blockPartner: nextSlotIndex
   };
 
-  // 다음 교시도 자동 배치
+  // 다음 교시도 자동 배치 (블록제)
   schedule[className][day][nextSlotIndex] = {
-    subject: finalSubjectName,
-    teachers: [teacher.name],
+    subject: subjectName || teacher.subjects[0],
+    teachers: [teacherName],
     isCoTeaching: false,
     isFixed: false,
     isBlockPeriod: true,
-    blockPartner: slotIndex
   };
 
   return true;
@@ -1038,6 +1141,179 @@ export const getSequentialGradeTeachingInfo = (data: TimetableData): string[] =>
   });
   
   return info;
+};
+
+// 교사 3연속 수업 제약조건 확인
+export const checkTeacherConsecutiveTeaching = (
+  schedule: Schedule,
+  teacherName: string,
+  day: string,
+  period: number,
+  excludeClassName?: string
+): ValidationResult => {
+  const slotIndex = period - 1;
+  
+  // 해당 교사가 같은 요일에 연속으로 수업하는지 확인
+  let consecutiveCount = 0;
+  
+  // 현재 교시 이전의 연속 수업 확인
+  for (let i = slotIndex - 1; i >= 0; i--) {
+    let hasTeaching = false;
+    
+    for (const className of Object.keys(schedule)) {
+      if (excludeClassName && className === excludeClassName) continue;
+      
+      const slot = schedule[className]?.[day]?.[i];
+      if (slot && typeof slot === 'object' && 'teachers' in slot && Array.isArray(slot.teachers)) {
+        if (slot.teachers.includes(teacherName)) {
+          hasTeaching = true;
+          break;
+        }
+      } else if (typeof slot === 'string' && slot.includes(teacherName)) {
+        hasTeaching = true;
+        break;
+      }
+    }
+    
+    if (hasTeaching) {
+      consecutiveCount++;
+    } else {
+      break;
+    }
+  }
+  
+  // 현재 교시 이후의 연속 수업 확인
+  const maxPeriods = 7; // 기본값
+  for (let i = slotIndex + 1; i < maxPeriods; i++) {
+    let hasTeaching = false;
+    
+    for (const className of Object.keys(schedule)) {
+      if (excludeClassName && className === excludeClassName) continue;
+      
+      const slot = schedule[className]?.[day]?.[i];
+      if (slot && typeof slot === 'object' && 'teachers' in slot && Array.isArray(slot.teachers)) {
+        if (slot.teachers.includes(teacherName)) {
+          hasTeaching = true;
+          break;
+        }
+      } else if (typeof slot === 'string' && slot.includes(teacherName)) {
+        hasTeaching = true;
+        break;
+      }
+    }
+    
+    if (hasTeaching) {
+      consecutiveCount++;
+    } else {
+      break;
+    }
+  }
+  
+  // 현재 교시 포함하여 3연속 이상인지 확인
+  if (consecutiveCount >= 2) { // 현재 교시 포함 3연속
+    return {
+      allowed: false,
+      reason: 'teacher_consecutive_teaching',
+      message: `${teacherName} 교사가 ${day}요일에 3연속 수업하게 됩니다. (${consecutiveCount + 1}연속)`,
+      consecutiveCount: consecutiveCount + 1
+    };
+  }
+  
+  return { allowed: true };
+};
+
+// 교사 3연속 수업 제약조건 전체 검증
+export const validateTeacherConsecutiveTeaching = (
+  schedule: Schedule,
+  data: TimetableData,
+  addLog: (message: string, type?: string) => void
+): boolean => {
+  let allValid = true;
+  const violations: string[] = [];
+
+  addLog(`🔍 교사 3연속 수업 제약조건 검증: ${data.teachers?.length || 0}명의 교사`, 'info');
+
+  data.teachers?.forEach(teacher => {
+    Object.keys(schedule).forEach(className => {
+      DAYS.forEach(day => {
+        const maxPeriods = data.base?.periods_per_day?.[day] || 7;
+        
+        for (let period = 1; period <= maxPeriods; period++) {
+          const slotIndex = period - 1;
+          const slot = schedule[className]?.[day]?.[slotIndex];
+          
+          if (slot && typeof slot === 'object' && slot.teachers && slot.teachers.includes(teacher.name)) {
+            // 이 교사가 수업하는 시간에 연속 수업 확인
+            let consecutiveCount = 0;
+            
+            // 이전 교시들 확인
+            for (let i = slotIndex - 1; i >= 0; i--) {
+              let hasTeaching = false;
+              
+              for (const otherClassName of Object.keys(schedule)) {
+                const otherSlot = schedule[otherClassName]?.[day]?.[i];
+                if (otherSlot && typeof otherSlot === 'object' && otherSlot.teachers) {
+                  if (otherSlot.teachers.includes(teacher.name)) {
+                    hasTeaching = true;
+                    break;
+                  }
+                } else if (typeof otherSlot === 'string' && otherSlot.includes(teacher.name)) {
+                  hasTeaching = true;
+                  break;
+                }
+              }
+              
+              if (hasTeaching) {
+                consecutiveCount++;
+              } else {
+                break;
+              }
+            }
+            
+            // 이후 교시들 확인
+            for (let i = slotIndex + 1; i < maxPeriods; i++) {
+              let hasTeaching = false;
+              
+              for (const otherClassName of Object.keys(schedule)) {
+                const otherSlot = schedule[otherClassName]?.[day]?.[i];
+                if (otherSlot && typeof otherSlot === 'object' && otherSlot.teachers) {
+                  if (otherSlot.teachers.includes(teacher.name)) {
+                    hasTeaching = true;
+                    break;
+                  }
+                } else if (typeof otherSlot === 'string' && otherSlot.includes(teacher.name)) {
+                  hasTeaching = true;
+                  break;
+                }
+              }
+              
+              if (hasTeaching) {
+                consecutiveCount++;
+              } else {
+                break;
+              }
+            }
+            
+            // 3연속 이상인지 확인
+            if (consecutiveCount >= 2) { // 현재 교시 포함 3연속
+              const violation = `${teacher.name} 교사가 ${day}요일 ${period}교시에 3연속 수업 중 (${consecutiveCount + 1}연속)`;
+              violations.push(violation);
+              addLog(`❌ ${violation}`, 'error');
+              allValid = false;
+            }
+          }
+        }
+      });
+    });
+  });
+
+  if (allValid) {
+    addLog(`✅ 교사 3연속 수업 제약조건 검증 통과`, 'success');
+  } else {
+    addLog(`❌ 교사 3연속 수업 제약조건 위반 ${violations.length}건 발견`, 'error');
+  }
+
+  return allValid;
 };
 
 // 헬퍼 함수: 학급명에서 학년 추출

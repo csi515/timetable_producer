@@ -11,14 +11,15 @@ export const useTeacherSettings = (data, updateData) => {
     co_teaching_with: '',
     maxHours: 25,
     weeklyHoursByGrade: {},
-    subjectHours: {},
-    mutual_exclusions: [],
-    sequential_grade_teaching: false
+    subjectHours: {}
   });
   
   // 편집 모달 상태
   const [editingTeacher, setEditingTeacher] = useState(null);
   const [editingIndex, setEditingIndex] = useState(-1);
+  
+  // 추가 모달 상태
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const days = ['월', '화', '수', '목', '금'];
   const maxPeriods = Math.max(...Object.values(data.base.periods_per_day));
@@ -36,13 +37,19 @@ export const useTeacherSettings = (data, updateData) => {
         co_teaching_with: '',
         maxHours: 25,
         weeklyHoursByGrade: {},
-        subjectHours: {},
-        mutual_exclusions: [],
-        sequential_grade_teaching: false
+        subjectHours: {}
       });
     } else {
       alert('교사명과 담당 과목을 입력해주세요.');
     }
+  };
+
+  const openAddModal = () => {
+    setIsAddModalOpen(true);
+  };
+
+  const closeAddModal = () => {
+    setIsAddModalOpen(false);
   };
 
   const updateTeacher = (index, field, value) => {
@@ -81,27 +88,57 @@ export const useTeacherSettings = (data, updateData) => {
     }
   };
 
-  const addUnavailableTime = (day, period) => {
+  const addUnavailableTime = (teacher, day, period) => {
     const timeSlot = [day, period];
-    const isAlreadyAdded = editingTeacher.unavailable.some(
+    const unavailable = teacher.unavailable || [];
+    const isAlreadyAdded = unavailable.some(
       slot => slot[0] === day && slot[1] === period
     );
     
     if (!isAlreadyAdded) {
-      const updatedUnavailable = [...editingTeacher.unavailable, timeSlot];
-      setEditingTeacher({ ...editingTeacher, unavailable: updatedUnavailable });
+      const updatedUnavailable = [...unavailable, timeSlot];
+      setEditingTeacher({ ...teacher, unavailable: updatedUnavailable });
     }
   };
 
-  const removeUnavailableTime = (day, period) => {
-    const updatedUnavailable = editingTeacher.unavailable.filter(
+  const removeUnavailableTime = (teacher, day, period) => {
+    const unavailable = teacher.unavailable || [];
+    const updatedUnavailable = unavailable.filter(
       slot => !(slot[0] === day && slot[1] === period)
     );
-    setEditingTeacher({ ...editingTeacher, unavailable: updatedUnavailable });
+    setEditingTeacher({ ...teacher, unavailable: updatedUnavailable });
   };
 
-  const isTimeUnavailable = (day, period) => {
-    return editingTeacher.unavailable.some(slot => slot[0] === day && slot[1] === period);
+  const isTimeUnavailable = (teacher, day, period) => {
+    const unavailable = teacher.unavailable || [];
+    return unavailable.some(slot => slot[0] === day && slot[1] === period);
+  };
+
+  // 교사 추가 모달용 함수들
+  const addUnavailableTimeForNew = (teacher, day, period) => {
+    const timeSlot = [day, period];
+    const unavailable = teacher.unavailable || [];
+    const isAlreadyAdded = unavailable.some(
+      slot => slot[0] === day && slot[1] === period
+    );
+    
+    if (!isAlreadyAdded) {
+      const updatedUnavailable = [...unavailable, timeSlot];
+      setNewTeacher({ ...teacher, unavailable: updatedUnavailable });
+    }
+  };
+
+  const removeUnavailableTimeForNew = (teacher, day, period) => {
+    const unavailable = teacher.unavailable || [];
+    const updatedUnavailable = unavailable.filter(
+      slot => !(slot[0] === day && slot[1] === period)
+    );
+    setNewTeacher({ ...teacher, unavailable: updatedUnavailable });
+  };
+
+  const isTimeUnavailableForNew = (teacher, day, period) => {
+    const unavailable = teacher.unavailable || [];
+    return unavailable.some(slot => slot[0] === day && slot[1] === period);
   };
 
   const toggleSubjectInEdit = (subjectName) => {
@@ -175,6 +212,7 @@ export const useTeacherSettings = (data, updateData) => {
     editingTeacher,
     setEditingTeacher,
     editingIndex,
+    isAddModalOpen,
     days,
     maxPeriods,
     addTeacher,
@@ -182,10 +220,15 @@ export const useTeacherSettings = (data, updateData) => {
     removeTeacher,
     openEditModal,
     closeEditModal,
+    openAddModal,
+    closeAddModal,
     saveEditedTeacher,
     addUnavailableTime,
     removeUnavailableTime,
     isTimeUnavailable,
+    addUnavailableTimeForNew,
+    removeUnavailableTimeForNew,
+    isTimeUnavailableForNew,
     toggleSubjectInEdit,
     handleFileUpload,
     handleNext

@@ -1,11 +1,12 @@
 import { Schedule, Teacher, AvailableSlot, TimetableData } from '../types';
-import { DAYS, convertClassNameToKey } from '../utils/helpers';
+import { DAYS, convertClassNameToKey, getCurrentTeacherHours } from '../utils/helpers';
 import { 
+  checkTeacherTimeConflict, 
   checkTeacherUnavailable, 
-  checkTeacherClassHoursLimit, 
-  checkClassWeeklyHoursLimit, 
+  checkTeacherClassHoursLimit,
+  checkClassWeeklyHoursLimit,
   checkClassDailyHoursLimit,
-  checkTeacherTimeConflict,
+  checkTeacherMutualExclusion,
   checkBlockPeriodRequirement
 } from './constraints';
 
@@ -45,6 +46,12 @@ export const findAvailableSlots = (
         continue; // 교사가 이미 다른 학급에서 수업 중이므로 배치 불가
       }
       
+      // 🚨 교사 상호 배제 제약조건 검사 (절대 우회 불가능!)
+      const mutualExclusionCheck = checkTeacherMutualExclusion(schedule, teacher.name, day, period, data, className);
+      if (!mutualExclusionCheck.allowed) {
+        continue; // 상호 배제 교사와 동시 수업이 불가능하므로 배치 불가
+      }
+      
       // 교사별 수업 불가 시간 확인 (응급 모드에서는 우회)
       if (!emergencyMode) {
         const unavailableCheck = checkTeacherUnavailable(teacher, day, period);
@@ -61,14 +68,12 @@ export const findAvailableSlots = (
         }
       }
       
-      // 교사가 해당 학급을 담당하는지 추가 확인 (응급 모드에서는 완화)
-      if (!emergencyMode) {
-        const classKey = convertClassNameToKey(className);
-        const hasClassAssignment = (teacher.classWeeklyHours && teacher.classWeeklyHours[className] > 0) ||
-                                  (teacher.weeklyHoursByGrade && teacher.weeklyHoursByGrade[classKey] > 0);
-        if (!hasClassAssignment) {
-          continue;
-        }
+      // 🚨 교사가 해당 학급을 담당하는지 확인 (절대 우회 불가능!)
+      const classKey = convertClassNameToKey(className);
+      const hasClassAssignment = (teacher.classWeeklyHours && teacher.classWeeklyHours[className] > 0) ||
+                                (teacher.weeklyHoursByGrade && teacher.weeklyHoursByGrade[classKey] > 0);
+      if (!hasClassAssignment) {
+        continue; // 교사가 해당 학급을 담당하지 않으므로 배치 불가
       }
       
       // 학급별 주간 수업시수 제한 확인

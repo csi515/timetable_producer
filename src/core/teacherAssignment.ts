@@ -1,7 +1,8 @@
 import { Teacher, Schedule, TimetableData } from '../types';
 import { convertClassNameToKey } from '../utils/helpers';
+import { checkTeacherMutualExclusion, checkTeacherUnavailable, checkTeacherTimeConflict } from './constraints';
 
-// 과목을 가르칠 수 있는 교사들 찾기 (3단계 전략)
+// 과목을 가르칠 수 있는 교사들 찾기 (강화된 3단계 전략)
 export const findAvailableTeachersForSubject = (
   teachers: Teacher[],
   subjectName: string,
@@ -47,20 +48,20 @@ export const findAvailableTeachersForSubject = (
     });
   }
 
-  // 2단계: 해당 과목을 가르칠 수 있는 모든 교사들 (명시적으로 금지되지 않은 경우)
+  // 2단계: 해당 과목을 가르칠 수 있는 교사들 (0시간으로 설정되지 않은 경우만)
   const secondaryTeachers = teachers.filter(teacher => {
     const teacherSubjects = teacher.subjects || [];
     if (!teacherSubjects.includes(subjectName)) {
       return false;
     }
 
-    // 0시간으로 설정된 학급은 제외
+    // 0시간으로 설정된 학급은 절대 제외 (강화된 제약조건)
     const classKey = convertClassNameToKey(className);
     const hasZeroHours = (teacher.classWeeklyHours && teacher.classWeeklyHours[className] === 0) ||
                         (teacher.weeklyHoursByGrade && teacher.weeklyHoursByGrade[classKey] === 0);
 
     if (hasZeroHours) {
-      return false;
+      return false; // 0시간으로 설정된 학급에는 절대 배정하지 않음
     }
 
     // 교사 전체 시수 제한 확인
@@ -91,51 +92,122 @@ export const findAvailableTeachersForSubject = (
   }
 
   // 3단계: 완전히 배치 불가능한 경우, 과목을 가르칠 수 있는 모든 교사 (응급 배치)
+  // 단, 0시간으로 설정된 학급은 여전히 제외
   const emergencyTeachers = teachers.filter(teacher => {
     const teacherSubjects = teacher.subjects || [];
-    return teacherSubjects.includes(subjectName);
+    if (!teacherSubjects.includes(subjectName)) {
+      return false;
+    }
+
+    // 0시간으로 설정된 학급은 여전히 제외
+    const classKey = convertClassNameToKey(className);
+    const hasZeroHours = (teacher.classWeeklyHours && teacher.classWeeklyHours[className] === 0) ||
+                        (teacher.weeklyHoursByGrade && teacher.weeklyHoursByGrade[classKey] === 0);
+
+    if (hasZeroHours) {
+      return false; // 0시간으로 설정된 학급에는 절대 배정하지 않음
+    }
+
+    return true;
   });
   
   if (emergencyTeachers.length > 0) {
-    // 응급 교사들을 가용성에 따라 우선순위 정렬
-    const sortedEmergencyTeachers = emergencyTeachers.sort((a, b) => {
-      // 전체 시수가 적은 교사 우선
+    // 우선순위 정렬: 전체 시수가 적은 교사 우선
+    return emergencyTeachers.sort((a, b) => {
       const aTotalHours = getCurrentTeacherHours(schedule, a.name, undefined, data);
       const bTotalHours = getCurrentTeacherHours(schedule, b.name, undefined, data);
-      
-      if (aTotalHours !== bTotalHours) {
-        return aTotalHours - bTotalHours;
-      }
-      
-      // 수업 불가 시간이 적은 교사 우선
-      const aUnavailableCount = a.unavailable ? a.unavailable.length : 0;
-      const bUnavailableCount = b.unavailable ? b.unavailable.length : 0;
-      
-      if (aUnavailableCount !== bUnavailableCount) {
-        return aUnavailableCount - bUnavailableCount;
-      }
-      
-      // 최대 시수가 높은 교사 우선
-      const aMaxHours = a.max_hours_per_week || a.maxHours || 18;
-      const bMaxHours = b.max_hours_per_week || b.maxHours || 18;
-      return bMaxHours - aMaxHours;
+      return aTotalHours - bTotalHours;
     });
-    
-    console.warn(`⚠️ ${className} ${subjectName}: 응급 교사 배정 (${sortedEmergencyTeachers.length}명, 최우선: ${sortedEmergencyTeachers[0].name})`);
-    return sortedEmergencyTeachers;
   }
 
   return [];
 };
 
-// 교사별 현재 시수 계산 (학급별 또는 전체)
+// 교사 배정 검증 (강화된 버전)
+export const validateTeacherAssignment = (
+  teacher: Teacher,
+  className: string,
+  day: string,
+  period: number,
+  schedule: Schedule,
+  data: TimetableData
+): { allowed: boolean; reason?: string } => {
+  // 1. 교사 불가능 시간 확인
+  const unavailableCheck = checkTeacherUnavailable(teacher, day, period);
+  if (!unavailableCheck.allowed) {
+    return {
+      allowed: false,
+      reason: unavailableCheck.message || `교사 불가능 시간: ${teacher.name} ${day} ${period}교시`
+    };
+  }
+
+  // 2. 교사 시간 중복 확인
+  const conflictCheck = checkTeacherTimeConflict(schedule, teacher.name, day, period, className);
+  if (!conflictCheck.allowed) {
+    return {
+      allowed: false,
+      reason: conflictCheck.message || `교사 시간 중복: ${teacher.name} ${day} ${period}교시`
+    };
+  }
+
+  // 3. 교사 상호 배제 확인
+  const mutualExclusionCheck = checkTeacherMutualExclusion(schedule, teacher.name, day, period, data, className);
+  if (!mutualExclusionCheck.allowed) {
+    return {
+      allowed: false,
+      reason: mutualExclusionCheck.message || `교사 상호 배제: ${teacher.name} ${day} ${period}교시`
+    };
+  }
+
+  // 4. 교사 주간시수 제한 확인 (강화된 검증)
+  const classKey = convertClassNameToKey(className);
+  const currentHours = getCurrentTeacherHours(schedule, teacher.name, className, data);
+  const maxHours = teacher.classWeeklyHours?.[className] || 
+                  teacher.weeklyHoursByGrade?.[classKey] || 
+                  teacher.max_hours_per_week || 
+                  teacher.maxHours || 
+                  22;
+
+  // 0시간으로 설정된 학급에는 절대 배정하지 않음
+  const hasZeroHours = (teacher.classWeeklyHours && teacher.classWeeklyHours[className] === 0) ||
+                      (teacher.weeklyHoursByGrade && teacher.weeklyHoursByGrade[classKey] === 0);
+
+  if (hasZeroHours) {
+    return {
+      allowed: false,
+      reason: `${teacher.name} 교사는 ${className}에서 0시간으로 설정되어 있어 배정할 수 없습니다.`
+    };
+  }
+
+  if (currentHours >= maxHours) {
+    return {
+      allowed: false,
+      reason: `${teacher.name} 교사가 ${className}에서 최대 시수(${maxHours}시간)에 도달했습니다. (현재: ${currentHours}시간)`
+    };
+  }
+
+  // 5. 교사 전체 시수 제한 확인
+  const currentTotalHours = getCurrentTeacherHours(schedule, teacher.name, undefined, data);
+  const maxTotalHours = teacher.max_hours_per_week || teacher.maxHours || 22;
+  
+  if (currentTotalHours >= maxTotalHours) {
+    return {
+      allowed: false,
+      reason: `${teacher.name} 교사가 전체 최대 시수(${maxTotalHours}시간)에 도달했습니다. (현재: ${currentTotalHours}시간)`
+    };
+  }
+
+  return { allowed: true };
+};
+
+// 교사별 현재 수업 시수 계산 (강화된 버전)
 const getCurrentTeacherHours = (
   schedule: Schedule, 
   teacherName: string, 
   className?: string, 
   data?: TimetableData
 ): number => {
-  let totalHours = 0;
+  let hours = 0;
   
   Object.keys(schedule).forEach(classKey => {
     // 특정 학급만 계산하는 경우
@@ -143,27 +215,25 @@ const getCurrentTeacherHours = (
       return;
     }
     
-    const classSchedule = schedule[classKey];
-    if (!classSchedule) return;
-    
-    Object.keys(classSchedule).forEach(day => {
-      const daySchedule = classSchedule[day];
-      if (!daySchedule) return;
-      
-      Object.values(daySchedule).forEach(slot => {
-        if (slot && typeof slot === 'object' && slot.teachers && slot.teachers.includes(teacherName)) {
-          // 창의적 체험활동은 시수에서 제외 (선택적)
-          if (data && slot.subject) {
-            const subject = data.subjects?.find(s => s.name === slot.subject);
-            if (subject && subject.category === '창의적 체험활동') {
-              return; // 시수 계산에서 제외
+    if (schedule[classKey]) {
+      Object.keys(schedule[classKey]).forEach(day => {
+        if (schedule[classKey][day]) {
+          Object.values(schedule[classKey][day]).forEach(slot => {
+            // 슬롯이 객체이고 teachers 배열이 있는 경우
+            if (slot && typeof slot === 'object' && 'teachers' in slot && Array.isArray(slot.teachers)) {
+              if (slot.teachers.includes(teacherName)) {
+                hours++;
+              }
             }
-          }
-          totalHours++;
+            // 구버전 호환성: 문자열인 경우도 확인
+            else if (typeof slot === 'string' && slot.includes(teacherName)) {
+              hours++;
+            }
+          });
         }
       });
-    });
+    }
   });
   
-  return totalHours;
+  return hours;
 }; 

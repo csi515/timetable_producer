@@ -47,7 +47,7 @@ module.exports = (env, argv) => {
       }),
     ],
     devServer: {
-      port: 3000,
+      port: 3001,
       hot: true,
       static: {
         directory: path.join(__dirname, '.'),

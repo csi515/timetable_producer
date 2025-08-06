@@ -1,6 +1,6 @@
 // 기존 문자열 형식의 시간표 데이터를 객체 형식으로 변환하는 함수
 export const convertScheduleItem = (scheduleItem, className, day, period, data) => {
-  if (typeof scheduleItem === 'object' && scheduleItem !== null) {
+  if (typeof scheduleItem === 'object' && scheduleItem !== null && !Array.isArray(scheduleItem)) {
     // 이미 객체 형식인 경우 그대로 반환
     return scheduleItem;
   } else if (typeof scheduleItem === 'string' && scheduleItem.trim() !== '') {
@@ -205,6 +205,71 @@ export const getTeacherList = (data) => {
     return [];
   }
   return data.teachers.map(teacher => teacher.name);
+};
+
+// 전체 교사의 시간표 데이터 가져오기
+export const getAllTeachersSchedule = (data) => {
+  const allTeachersSchedule = {};
+  const days = ['월', '화', '수', '목', '금'];
+  const periodsPerDay = data.base?.periods_per_day || { '월': 7, '화': 7, '수': 7, '목': 7, '금': 7 };
+  const maxPeriods = Math.max(...Object.values(periodsPerDay));
+
+  if (!data.schedule || !data.teachers) return allTeachersSchedule;
+
+  // 각 교사별로 시간표 초기화
+  data.teachers.forEach(teacher => {
+    allTeachersSchedule[teacher.name] = {};
+    days.forEach(day => {
+      allTeachersSchedule[teacher.name][day] = {};
+      for (let period = 1; period <= maxPeriods; period++) {
+        allTeachersSchedule[teacher.name][day][period] = null;
+      }
+    });
+  });
+
+  // 스케줄에서 각 교사의 수업 정보 추출
+  Object.keys(data.schedule).forEach(className => {
+    days.forEach(day => {
+      const maxPeriodsForDay = periodsPerDay[day] || 7;
+      for (let period = 1; period <= maxPeriodsForDay; period++) {
+        const slotIndex = period - 1;
+        const slot = data.schedule[className]?.[day]?.[slotIndex];
+        
+        if (slot) {
+          let teachers = [];
+          let subject = '';
+          let isCoTeaching = false;
+          let isFixed = false;
+
+          if (typeof slot === 'object' && slot.teachers) {
+            teachers = slot.teachers;
+            subject = slot.subject || '';
+            isCoTeaching = slot.isCoTeaching || false;
+            isFixed = slot.isFixed || false;
+          } else if (typeof slot === 'string' && slot.trim() !== '') {
+            teachers = [slot.trim()];
+            subject = '미정';
+          }
+
+          // 각 교사에게 해당 시간의 수업 정보 할당
+          teachers.forEach(teacherName => {
+            if (allTeachersSchedule[teacherName]) {
+              allTeachersSchedule[teacherName][day][period] = {
+                className: className,
+                subject: subject,
+                isCoTeaching: isCoTeaching,
+                isFixed: isFixed,
+                isBlockPeriod: slot.isBlockPeriod || false,
+                otherTeachers: teachers.filter(t => t !== teacherName)
+              };
+            }
+          });
+        }
+      }
+    });
+  });
+
+  return allTeachersSchedule;
 };
 
 // 교사별 시수 통계 계산

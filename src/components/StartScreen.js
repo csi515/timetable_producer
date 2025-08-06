@@ -1,23 +1,6 @@
-import React, { useRef } from 'react';
+import React from 'react';
 
-function StartScreen({ data, loadFromJSON, resetData, nextStep }) {
-  const fileInputRef = useRef(null);
-
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const jsonData = JSON.parse(e.target.result);
-          loadFromJSON(jsonData);
-        } catch (error) {
-          alert('유효하지 않은 JSON 파일입니다.');
-        }
-      };
-      reader.readAsText(file);
-    }
-  };
+function StartScreen({ data, resetData, nextStep }) {
 
   const handleNewTimetable = () => {
     resetData();
@@ -40,38 +23,8 @@ function StartScreen({ data, loadFromJSON, resetData, nextStep }) {
           <p className="text-lg text-gray-500">단계별 가이드를 통해 쉽고 정확한 시간표를 만들어보세요</p>
         </div>
         
-        {/* 메인 액션 카드 - 3단 컬럼 */}
-        <div className="content-grid mb-12">
-          {/* JSON 파일 불러오기 */}
-          <div className="feature-card bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 hover:border-blue-400 transition-all duration-300 transform hover:-translate-y-2">
-            <div className="text-center">
-              <div className="text-8xl mb-8">📂</div>
-              <h3 className="text-3xl font-bold text-blue-700 mb-6">
-                기존 시간표 불러오기
-              </h3>
-              <p className="text-gray-600 mb-10 leading-relaxed text-lg">
-                이전에 저장한 JSON 파일을 불러와서<br />
-                작업을 계속할 수 있습니다.<br />
-                <span className="text-blue-600 font-semibold text-lg mt-4 block">
-                  💡 5단계에서 저장한 전체 설정 파일도 지원됩니다!
-                </span>
-              </p>
-              <button 
-                className="btn btn-primary text-xl px-10 py-5 hover:scale-105 transition-transform shadow-xl"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                📁 JSON 파일 선택
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-            </div>
-          </div>
-
+        {/* 메인 액션 카드 - 2단 컬럼 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
           {/* 새 시간표 만들기 */}
           <div className="feature-card bg-gradient-to-br from-emerald-50 to-emerald-100 border-2 border-emerald-200 hover:border-emerald-400 transition-all duration-300 transform hover:-translate-y-2">
             <div className="text-center">

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { TimetableData, Schedule, TeacherHoursTracker, GenerationLog } from '../types';
 import { generateTimetable } from '../core/scheduler';
+import { generateOptimizedTimetable } from '../core/optimizedScheduler';
 import { autoGenerateTimetable, AutoGenerationConfig } from '../core/autoGenerator';
 import { calculateScheduleStats } from '../utils/statistics';
 import { createLogMessage } from '../utils/helpers';
@@ -34,25 +35,36 @@ export const useTimetableGeneration = (data: TimetableData, updateData: (key: st
     setGenerationLog([]);
   };
 
-  // 수동 시간표 생성
+  // 수동 시간표 생성 (최적화된 버전)
   const handleGenerateTimetable = async () => {
     setIsGenerating(true);
     clearLog();
     setGenerationProgress(0);
 
     try {
-      const result = await generateTimetable(data, addLog as (message: string, type?: string) => void, setGenerationProgress);
+      const result = await generateOptimizedTimetable(data, addLog as (message: string, type?: string) => void, setGenerationProgress);
       
       setGenerationResults({
         schedule: result.schedule,
         teacherHours: result.teacherHours,
-        stats: result.stats
+        stats: result.stats,
+        validationReport: result.validationReport
       });
       
       updateData('schedule', result.schedule);
       updateData('teacherHours', result.teacherHours);
       
-      addLog('✅ 시간표 생성이 완료되었습니다!', 'success');
+      if (result.validationReport) {
+        const { summary } = result.validationReport;
+        addLog(`✅ 최적화된 시간표 생성이 완료되었습니다!`, 'success');
+        addLog(`📊 제약조건 검증 결과:`, 'info');
+        addLog(`   - 치명적 위반: ${summary.criticalViolations}건`, summary.criticalViolations > 0 ? 'error' : 'success');
+        addLog(`   - 높은 위반: ${summary.highViolations}건`, summary.highViolations > 0 ? 'error' : 'success');
+        addLog(`   - 중간 위반: ${summary.mediumViolations}건`, summary.mediumViolations > 0 ? 'warning' : 'success');
+        addLog(`   - 낮은 위반: ${summary.lowViolations}건`, summary.lowViolations > 0 ? 'warning' : 'success');
+      } else {
+        addLog('✅ 시간표 생성이 완료되었습니다!', 'success');
+      }
     } catch (error) {
       addLog(`❌ 시간표 생성 중 오류가 발생했습니다: ${error}`, 'error');
     } finally {

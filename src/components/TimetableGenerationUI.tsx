@@ -53,7 +53,7 @@ const TimetableGeneration: React.FC<TimetableGenerationProps> = ({
             disabled={isGenerating || isAutoGenerating}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isGenerating ? '생성 중...' : '시간표 생성'}
+            {isGenerating ? '최적화 생성 중...' : '최적화 시간표 생성'}
           </button>
           
           <button
