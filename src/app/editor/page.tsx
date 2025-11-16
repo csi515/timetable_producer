@@ -2,51 +2,51 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import BasicSettings from "@/components/BasicSettings";
-import SubjectSettings from "@/components/SubjectSettings";
-import TeacherSettings from "@/components/TeacherSettings";
-import ConstraintSettings from "@/components/ConstraintSettings";
-import FixedClassSettings from "@/components/FixedClassSettings";
-import FinalReview from "@/components/review/FinalReview";
+import Step0Start from "@/components/wizard/Step0Start";
+import Step1BasicSettings from "@/components/wizard/Step1BasicSettings";
+import Step2ClassesSubjects from "@/components/wizard/Step2ClassesSubjects";
+import Step3Teachers from "@/components/wizard/Step3Teachers";
+import Step4Constraints from "@/components/wizard/Step4Constraints";
+import Step5Generate from "@/components/wizard/Step5Generate";
+import Step6Review from "@/components/wizard/Step6Review";
+import { TimetableData } from "@/types/timetable";
 import { Download, Upload } from "lucide-react";
 
 const STEPS = [
-  { id: 0, name: "기본 설정", component: BasicSettings, icon: "⚙️", description: "학년, 학급, 교시 설정" },
-  { id: 1, name: "과목 설정", component: SubjectSettings, icon: "📚", description: "과목별 시수 및 제약조건" },
-  { id: 2, name: "교사 설정", component: TeacherSettings, icon: "👨‍🏫", description: "교사별 담당 과목 설정" },
-  { id: 3, name: "제약 조건", component: ConstraintSettings, icon: "🎯", description: "시간표 생성 제약조건" },
-  { id: 4, name: "고정 수업", component: FixedClassSettings, icon: "📌", description: "고정할 수업 시간 설정" },
-  { id: 5, name: "최종 확인", component: FinalReview, icon: "✅", description: "설정 내용 최종 확인" },
+  { id: 0, name: "시작", component: Step0Start },
+  { id: 1, name: "기본 설정", component: Step1BasicSettings },
+  { id: 2, name: "학급/과목 설정", component: Step2ClassesSubjects },
+  { id: 3, name: "교사 설정", component: Step3Teachers },
+  { id: 4, name: "제약조건 설정", component: Step4Constraints },
+  { id: 5, name: "시간표 생성", component: Step5Generate },
+  { id: 6, name: "검토/다운로드", component: Step6Review },
 ];
 
 export default function EditorPage() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
-  const [data, setData] = useState({
-    base: {
-      grades: 3,
-      classes_per_grade: [4, 4, 4],
-      periods_per_day: {
+  const [data, setData] = useState<TimetableData>({
+    classes: [],
+    subjects: [],
+    teachers: [],
+    schoolSchedule: {
+      days: ["월", "화", "수", "목", "금"],
+      periodsPerDay: {
         월: 6,
         화: 6,
         수: 6,
         목: 6,
         금: 6,
       },
+      lunchPeriod: 4,
     },
-    subjects: [],
-    teachers: [],
     constraints: {
-      must: [],
-      optional: [],
+      preventConsecutive3Periods: true,
+      preventMorningOverload: true,
+      preventDuplicateSubjectPerDay: true,
+      ensureEvenDistribution: true,
     },
-    fixedClasses: [],
-    classWeeklyHours: {},
-    schedule: {},
-    metadata: {
-      created_at: new Date().toISOString(),
-      last_modified: new Date().toISOString(),
-    },
+    assignments: [],
   });
 
   // 결제 확인
@@ -65,10 +65,6 @@ export default function EditorPage() {
     if (savedData) {
       try {
         const parsedData = JSON.parse(savedData);
-        if (typeof parsedData.base.classes_per_grade === "number") {
-          const singleValue = parsedData.base.classes_per_grade;
-          parsedData.base.classes_per_grade = Array(parsedData.base.grades).fill(singleValue);
-        }
         setData(parsedData);
       } catch (error) {
         console.error("저장된 데이터 로드 실패:", error);
@@ -86,22 +82,13 @@ export default function EditorPage() {
     localStorage.setItem("timetable-step", currentStep.toString());
   }, [data, currentStep]);
 
-  const updateData = (section: string, newData: any) => {
-    setData((prev) => ({
-      ...prev,
-      [section]: newData,
-      metadata: {
-        ...prev.metadata,
-        last_modified: new Date().toISOString(),
-      },
-    }));
+  const updateData = (updates: Partial<TimetableData>) => {
+    setData((prev) => ({ ...prev, ...updates }));
   };
 
   const nextStep = () => {
     if (currentStep < STEPS.length - 1) {
       setCurrentStep(currentStep + 1);
-    } else {
-      router.push("/generator");
     }
   };
 
@@ -119,8 +106,6 @@ export default function EditorPage() {
     const exportData = {
       ...data,
       metadata: {
-        ...data.metadata,
-        description: "시간표 생성기 전체 설정 데이터",
         exportDate: new Date().toISOString(),
         version: "1.0",
       },
@@ -150,47 +135,8 @@ export default function EditorPage() {
         reader.onload = (event: any) => {
           try {
             const jsonData = JSON.parse(event.target.result);
-            const parsedData =
-              typeof jsonData === "string" ? JSON.parse(jsonData) : jsonData;
-
-            if (parsedData.metadata && parsedData.metadata.description === "시간표 생성기 전체 설정 데이터") {
-              const fullSettings = {
-                base: parsedData.base || data.base,
-                subjects: parsedData.subjects || [],
-                teachers: parsedData.teachers || [],
-                constraints: parsedData.constraints || { must: [], optional: [] },
-                fixedClasses: parsedData.fixedClasses || [],
-                classWeeklyHours: parsedData.classWeeklyHours || {},
-                schedule: {},
-                metadata: {
-                  created_at: new Date().toISOString(),
-                  last_modified: new Date().toISOString(),
-                  imported_from: parsedData.metadata.exportDate,
-                },
-              };
-
-              if (typeof fullSettings.base.classes_per_grade === "number") {
-                const singleValue = fullSettings.base.classes_per_grade;
-                fullSettings.base.classes_per_grade = Array(
-                  fullSettings.base.grades
-                ).fill(singleValue);
-              }
-
-              setData(fullSettings);
-              setCurrentStep(5);
-              alert(
-                `전체 설정을 성공적으로 불러왔습니다!\n\n📊 불러온 데이터:\n• 과목: ${fullSettings.subjects.length}개\n• 교사: ${fullSettings.teachers.length}명\n• 제약조건: ${(fullSettings.constraints.must?.length || 0) + (fullSettings.constraints.optional?.length || 0)}개\n• 고정수업: ${fullSettings.fixedClasses.length}개`
-              );
-            } else {
-              if (typeof parsedData.base.classes_per_grade === "number") {
-                const singleValue = parsedData.base.classes_per_grade;
-                parsedData.base.classes_per_grade = Array(
-                  parsedData.base.grades
-                ).fill(singleValue);
-              }
-              setData(parsedData);
-              setCurrentStep(0);
-            }
+            setData(jsonData);
+            alert("설정을 성공적으로 불러왔습니다!");
           } catch (error) {
             console.error("JSON 로드 실패:", error);
             alert("유효하지 않은 JSON 파일입니다.");
@@ -204,17 +150,14 @@ export default function EditorPage() {
 
   const CurrentStepComponent = STEPS[currentStep].component;
   const progressPercentage = ((currentStep + 1) / STEPS.length) * 100;
-  const totalClasses = Array.isArray(data.base.classes_per_grade)
-    ? data.base.classes_per_grade.reduce((sum, count) => sum + count, 0)
-    : 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
       {/* 헤더 */}
       <div className="header">
-        <h1>🎓 시간표 제작 시스템</h1>
+        <h1>🎓 시간표 자동 생성 시스템</h1>
         <p className="text-lg opacity-90">
-          PC 환경에 최적화된 전문적인 시간표 제작 도구
+          CSP 기반 백트래킹 알고리즘으로 최적의 시간표 생성
         </p>
 
         {/* JSON Export/Import 버튼 */}
@@ -275,7 +218,11 @@ export default function EditorPage() {
                   <div
                     key={step.id}
                     className={`progress-step ${
-                      isActive ? "active" : isCompleted ? "completed" : "pending"
+                      isActive
+                        ? "active"
+                        : isCompleted
+                        ? "completed"
+                        : "pending"
                     }`}
                     onClick={() => step.id <= currentStep && goToStep(step.id)}
                     style={{
@@ -287,9 +234,7 @@ export default function EditorPage() {
                     </div>
                     <div className="flex-1">
                       <div className="font-semibold text-lg">{step.name}</div>
-                      <div className="text-sm opacity-80">{step.description}</div>
                     </div>
-                    <div className="text-2xl">{step.icon}</div>
                   </div>
                 );
               })}
@@ -305,12 +250,8 @@ export default function EditorPage() {
               </div>
               <div className="space-y-4">
                 <div className="stat-card">
-                  <div className="stat-number">{data.base.grades}</div>
-                  <div className="stat-label">학년 수</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-number">{totalClasses}</div>
-                  <div className="stat-label">총 학급</div>
+                  <div className="stat-number">{data.classes.length}</div>
+                  <div className="stat-label">학급 수</div>
                 </div>
                 <div className="stat-card">
                   <div className="stat-number">{data.subjects.length}</div>
@@ -321,24 +262,9 @@ export default function EditorPage() {
                   <div className="stat-label">교사 수</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-number">
-                    {(data.constraints.must?.length || 0) +
-                      (data.constraints.optional?.length || 0)}
-                  </div>
-                  <div className="stat-label">제약 조건</div>
+                  <div className="stat-number">{data.assignments.length}</div>
+                  <div className="stat-label">배정된 수업</div>
                 </div>
-                <div className="stat-card">
-                  <div className="stat-number">{data.fixedClasses.length}</div>
-                  <div className="stat-label">고정 수업</div>
-                </div>
-              </div>
-            </div>
-
-            {/* 빠른 액션 */}
-            <div className="mt-8 space-y-4">
-              <div className="text-center text-sm text-gray-500">
-                마지막 수정:{" "}
-                {new Date(data.metadata.last_modified).toLocaleString("ko-KR")}
               </div>
             </div>
           </div>
@@ -351,8 +277,6 @@ export default function EditorPage() {
               nextStep={nextStep}
               prevStep={prevStep}
               goToStep={goToStep}
-              resetData={() => {}}
-              loadFromJSON={importFromJSON}
             />
           </div>
         </div>
