@@ -1,3 +1,5 @@
+"use client";
+
 import React from 'react';
 import { useTeacherSettings } from './TeacherSettingsCore';
 import { TeacherList, AddTeacherModal, EditTeacherModal, StatisticsCards } from './TeacherSettingsUI';

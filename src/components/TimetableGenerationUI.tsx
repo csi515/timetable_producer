@@ -1,3 +1,5 @@
+"use client";
+
 import React from 'react';
 import { TimetableData } from '../types';
 import { useTimetableGeneration } from '../hooks/useTimetableGeneration';

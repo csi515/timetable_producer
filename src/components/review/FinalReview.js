@@ -1,3 +1,5 @@
+"use client";
+
 import React from 'react';
 import { useReviewData } from '../../hooks/useReviewData';
 import StatCard from '../common/StatCard';
