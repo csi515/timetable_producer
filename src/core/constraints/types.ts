@@ -13,8 +13,11 @@ export interface Slot {
   period: number;
   subjectId: string | null;
   teacherId: string | null;
+  roomId?: string | null; // 교실 ID
+  isCoTeaching?: boolean; // 공동수업 여부
   coTeachers?: string[]; // 공동수업 교사 목록
-  roomId?: string; // 교실 ID
+  isSpecialProgram?: boolean; // 특수 프로그램 여부
+  programType?: 'creative' | 'club' | 'level_based'; // 프로그램 타입
 }
 
 export interface Teacher {
@@ -32,7 +35,6 @@ export interface Class {
   name: string;
   grade: number;
   classNumber: number;
-  floor?: number; // 층수 (이동수업 최적화용)
 }
 
 export interface Subject {
@@ -40,14 +42,14 @@ export interface Subject {
   name: string;
   weeklyHours: number; // 주당 시수
   requiresConsecutive?: boolean; // 연강 필요
-  consecutivePeriods?: number; // 연강 교시 수 (기본 2)
-  requiresSpecialRoom?: boolean;
-  specialRoomType?: string; // '실험실', '컴퓨터실', '음악실' 등
+  consecutivePeriods?: number; // 연속 교시 수 (기본 2)
+  requiresSpecialRoom?: boolean; // 특별실 필요
+  specialRoomType?: string; // 특별실 종류
   maxPerDay?: number; // 하루 최대 배정 횟수
-  preferredPeriods?: number[]; // 선호 교시 (소프트 제약)
-  difficulty?: number; // 난이도 (1-10)
-  requiresCoTeaching?: boolean; // 공동수업 필요
-  coTeachers?: string[]; // 공동수업 교사 목록
+  fixedDay?: Day; // 고정 요일
+  fixedPeriod?: number; // 고정 교시
+  preferredPeriods?: number[]; // 선호 교시
+  avoidPeriods?: number[]; // 피해야 할 교시
 }
 
 export interface Room {
@@ -55,35 +57,36 @@ export interface Room {
   name: string;
   type: 'regular' | 'lab' | 'computer' | 'music' | 'gym' | 'auditorium';
   capacity?: number;
-  floor?: number;
-  building?: string;
+  floor?: number; // 층수
+  canCoTeaching?: boolean; // 공동수업 가능 여부
 }
 
 export interface SpecialProgram {
   id: string;
-  type: 'creative' | 'club' | 'co-teaching' | 'level-based';
   name: string;
-  targetClasses: string[]; // 대상 학급 ID 목록
-  targetGrade?: number; // 대상 학년
-  day: Day;
-  period: number;
-  teachers?: string[]; // 담당 교사 (선택)
-  roomId?: string;
+  type: 'creative' | 'club' | 'level_based';
+  grade?: number; // 학년 (창체, 수준별 이동수업)
+  classes: string[]; // 참여 학급 ID 목록
+  teachers: string[]; // 담당 교사 ID 목록 (선택적)
+  weeklyFrequency: number; // 주당 횟수
+  fixedDay?: Day; // 고정 요일
+  fixedPeriod?: number; // 고정 교시
+  requiredRoom?: string; // 필요 교실 ID
 }
 
 export interface Timetable {
   [classId: string]: {
     [day in Day]: {
-      [period: number]: Slot | null;
+      [period: number]: Slot;
     };
   };
 }
 
-export interface SchoolConfig {
+export interface SchoolSchedule {
   days: Day[];
   periodsPerDay: Record<Day, number>;
-  lunchPeriod: number; // 점심 시간 전 마지막 교시
-  totalWeeks: number; // 학기 주수 (기본 1)
+  lunchPeriod?: number; // 점심 시간 전 교시
+  breakPeriods?: Array<{ day: Day; period: number }>; // 쉬는 시간
 }
 
 export interface TimetableData {
@@ -93,7 +96,7 @@ export interface TimetableData {
   rooms?: Room[];
   specialPrograms?: SpecialProgram[];
   timetable: Timetable;
-  schoolSchedule: SchoolConfig;
+  schoolSchedule: SchoolSchedule;
 }
 
 // 제약조건 평가 결과
@@ -111,32 +114,16 @@ export interface ConstraintMetadata {
   id: string;
   name: string;
   description: string;
-  type: 'hard' | 'soft';
   priority: 'critical' | 'high' | 'medium' | 'low';
-  category: string;
+  category: 'teacher' | 'class' | 'subject' | 'facility' | 'special_program' | 'distribution';
+  isHard: boolean; // 하드 제약조건 여부
 }
 
-// 제약조건 위반 리포트
-export interface ViolationReport {
-  constraintId: string;
-  constraintName: string;
-  severity: 'error' | 'warning';
-  message: string;
-  affectedSlots: Slot[];
-  details?: Record<string, any>;
-}
-
-// 전체 검증 리포트
-export interface ValidationReport {
-  isValid: boolean;
-  hardViolations: ViolationReport[];
-  softViolations: ViolationReport[];
-  totalScore: number; // 소프트 제약조건 총 점수
-  summary: {
-    totalConstraints: number;
-    hardConstraints: number;
-    softConstraints: number;
-    hardViolations: number;
-    softViolations: number;
-  };
+// 제약조건 엔진 설정
+export interface ConstraintEngineConfig {
+  maxConsecutivePeriods?: number;
+  lunchPeriod?: number;
+  maxBeforeLunch?: number;
+  minDaysBetween?: number;
+  enableSoftConstraints?: boolean;
 }

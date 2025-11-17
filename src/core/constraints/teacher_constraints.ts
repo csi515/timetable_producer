@@ -1,26 +1,25 @@
-// 교사 관련 하드 제약조건
+// 교사 관련 제약조건
 
-import { BaseConstraint } from '../BaseConstraint';
-import { Slot, TimetableData, ConstraintEvaluationResult } from '../types';
+import { BaseConstraint } from './BaseConstraint';
+import { Slot, TimetableData, ConstraintEvaluationResult } from './types';
 import {
   isTeacherAssignedAt,
+  countTeacherDailyLessons,
+  countTeacherWeeklyLessons,
   countConsecutivePeriods,
-  countBeforeLunch,
-  countWeeklyHoursForTeacher,
-  countDailyLessonsForTeacher,
-} from '../utils';
+} from './utils';
 
 /**
- * 교사 불가능 시간 제약조건
+ * 교사 불가시간 제약조건
  */
 export class TeacherAvailabilityConstraint extends BaseConstraint {
   readonly metadata = {
     id: 'teacher_availability',
-    name: '교사 불가능 시간',
+    name: '교사 불가시간',
     description: '교사가 불가능한 시간대에 수업을 배정할 수 없습니다.',
-    type: 'hard' as const,
     priority: 'critical' as const,
-    category: 'teacher',
+    category: 'teacher' as const,
+    isHard: true,
   };
 
   checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
@@ -28,13 +27,13 @@ export class TeacherAvailabilityConstraint extends BaseConstraint {
       return this.success();
     }
 
-    const teacher = timetable.teachers.find((t) => t.id === slot.teacherId);
+    const teacher = this.findTeacher(timetable, slot.teacherId);
     if (!teacher) {
       return this.failure(`교사를 찾을 수 없습니다: ${slot.teacherId}`, 'error');
     }
 
     const isUnavailable = teacher.unavailableSlots.some(
-      (unavailable) => unavailable.day === slot.day && unavailable.period === slot.period
+      unavailable => unavailable.day === slot.day && unavailable.period === slot.period
     );
 
     if (isUnavailable) {
@@ -68,16 +67,17 @@ export class TeacherAvailabilityConstraint extends BaseConstraint {
           const slot = daySchedule[period];
           if (!slot || !slot.teacherId) continue;
 
-          const teacher = timetable.teachers.find((t) => t.id === slot.teacherId);
+          const teacher = this.findTeacher(timetable, slot.teacherId);
           if (!teacher) continue;
 
           const isUnavailable = teacher.unavailableSlots.some(
-            (unavailable) => unavailable.day === day && unavailable.period === period
+            unavailable => unavailable.day === day && unavailable.period === period
           );
 
           if (isUnavailable) {
+            const className = this.findClass(timetable, classId)?.name || classId;
             violations.push(
-              `${teacher.name} 교사가 ${day}요일 ${period}교시에 ${timetable.classes.find((c) => c.id === classId)?.name || classId}에서 수업 중 (불가능 시간)`
+              `${teacher.name} 교사가 ${day}요일 ${period}교시에 ${className}에서 수업 중 (불가능 시간)`
             );
           }
         }
@@ -85,7 +85,11 @@ export class TeacherAvailabilityConstraint extends BaseConstraint {
     }
 
     if (violations.length > 0) {
-      return this.failure(`교사 불가능 시간 위반 ${violations.length}건 발견`, 'error', { violations });
+      return this.failure(
+        `교사 불가능 시간 위반 ${violations.length}건 발견`,
+        'error',
+        { violations }
+      );
     }
 
     return this.success();
@@ -100,9 +104,9 @@ export class TeacherNoOverlapConstraint extends BaseConstraint {
     id: 'teacher_no_overlap',
     name: '교사 중복 수업 금지',
     description: '교사는 동일 시간대에 두 반 이상을 수업할 수 없습니다.',
-    type: 'hard' as const,
     priority: 'critical' as const,
-    category: 'teacher',
+    category: 'teacher' as const,
+    isHard: true,
   };
 
   checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
@@ -110,10 +114,16 @@ export class TeacherNoOverlapConstraint extends BaseConstraint {
       return this.success();
     }
 
-    const isOverlapping = isTeacherAssignedAt(timetable, slot.teacherId, slot.day, slot.period, slot.classId);
+    const isOverlapping = isTeacherAssignedAt(
+      timetable,
+      slot.teacherId,
+      slot.day,
+      slot.period,
+      slot.classId
+    );
 
     if (isOverlapping) {
-      const teacher = timetable.teachers.find((t) => t.id === slot.teacherId);
+      const teacher = this.findTeacher(timetable, slot.teacherId);
       const conflictingClass = this.findConflictingClass(timetable, slot.teacherId, slot.day, slot.period, slot.classId);
 
       return this.failure(
@@ -162,8 +172,8 @@ export class TeacherNoOverlapConstraint extends BaseConstraint {
     for (const [key, slots] of Object.entries(teacherSlots)) {
       if (slots.length > 1) {
         const [teacherId, day, period] = key.split('_');
-        const teacher = timetable.teachers.find((t) => t.id === teacherId);
-        const classNames = slots.map((s) => timetable.classes.find((c) => c.id === s.classId)?.name || s.classId).join(', ');
+        const teacher = this.findTeacher(timetable, teacherId);
+        const classNames = slots.map(s => this.findClass(timetable, s.classId)?.name || s.classId).join(', ');
 
         violations.push(
           `${teacher?.name || teacherId} 교사가 ${day}요일 ${period}교시에 ${slots.length}개 반(${classNames})에서 중복 수업`
@@ -172,7 +182,11 @@ export class TeacherNoOverlapConstraint extends BaseConstraint {
     }
 
     if (violations.length > 0) {
-      return this.failure(`교사 중복 수업 ${violations.length}건 발견`, 'error', { violations });
+      return this.failure(
+        `교사 중복 수업 ${violations.length}건 발견`,
+        'error',
+        { violations }
+      );
     }
 
     return this.success();
@@ -190,7 +204,7 @@ export class TeacherNoOverlapConstraint extends BaseConstraint {
 
       const slot = this.getSlot(timetable, classId, day, period);
       if (slot && slot.teacherId === teacherId) {
-        return timetable.classes.find((c) => c.id === classId)?.name || classId;
+        return this.findClass(timetable, classId)?.name || classId;
       }
     }
     return null;
@@ -198,23 +212,20 @@ export class TeacherNoOverlapConstraint extends BaseConstraint {
 }
 
 /**
- * 교사 연속수업 제한 제약조건 (하드)
+ * 교사 연속수업 제한 제약조건
  */
 export class TeacherConsecutiveLimitConstraint extends BaseConstraint {
   readonly metadata = {
     id: 'teacher_consecutive_limit',
     name: '교사 연속수업 제한',
     description: '교사가 연속으로 3교시 이상 수업하는 것을 방지합니다.',
-    type: 'hard' as const,
     priority: 'high' as const,
-    category: 'teacher',
+    category: 'teacher' as const,
+    isHard: true,
   };
 
-  private readonly maxConsecutive: number;
-
-  constructor(maxConsecutive: number = 3) {
+  constructor(private maxConsecutive: number = 3) {
     super();
-    this.maxConsecutive = maxConsecutive;
   }
 
   checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
@@ -222,11 +233,17 @@ export class TeacherConsecutiveLimitConstraint extends BaseConstraint {
       return this.success();
     }
 
-    const consecutiveCount = countConsecutivePeriods(timetable, slot.teacherId, slot.classId, slot.day, slot.period);
+    const consecutiveCount = countConsecutivePeriods(
+      timetable,
+      slot.teacherId,
+      slot.classId,
+      slot.day,
+      slot.period
+    );
 
     if (consecutiveCount >= this.maxConsecutive) {
-      const teacher = timetable.teachers.find((t) => t.id === slot.teacherId);
-      const classItem = timetable.classes.find((c) => c.id === slot.classId);
+      const teacher = this.findTeacher(timetable, slot.teacherId);
+      const classItem = this.findClass(timetable, slot.classId);
 
       return this.failure(
         `${teacher?.name || slot.teacherId} 교사가 ${classItem?.name || slot.classId}에서 ${slot.day}요일에 연속 ${consecutiveCount + 1}교시 수업하게 됩니다. (최대 ${this.maxConsecutive}교시)`,
@@ -270,7 +287,7 @@ export class TeacherConsecutiveLimitConstraint extends BaseConstraint {
               consecutiveCount++;
             } else {
               if (consecutiveCount >= this.maxConsecutive) {
-                const classItem = timetable.classes.find((c) => c.id === classId);
+                const classItem = this.findClass(timetable, classId);
                 violations.push(
                   `${teacher.name} 교사가 ${classItem?.name || classId}에서 ${day}요일 ${startPeriod}-${startPeriod + consecutiveCount - 1}교시에 연속 ${consecutiveCount}교시 수업`
                 );
@@ -282,7 +299,7 @@ export class TeacherConsecutiveLimitConstraint extends BaseConstraint {
 
           // 마지막 교시까지 연속인 경우
           if (consecutiveCount >= this.maxConsecutive) {
-            const classItem = timetable.classes.find((c) => c.id === classId);
+            const classItem = this.findClass(timetable, classId);
             violations.push(
               `${teacher.name} 교사가 ${classItem?.name || classId}에서 ${day}요일 ${startPeriod}-${startPeriod + consecutiveCount - 1}교시에 연속 ${consecutiveCount}교시 수업`
             );
@@ -292,7 +309,11 @@ export class TeacherConsecutiveLimitConstraint extends BaseConstraint {
     }
 
     if (violations.length > 0) {
-      return this.failure(`연속수업 제한 위반 ${violations.length}건 발견`, 'error', { violations });
+      return this.failure(
+        `연속수업 제한 위반 ${violations.length}건 발견`,
+        'error',
+        { violations }
+      );
     }
 
     return this.success();
@@ -300,16 +321,16 @@ export class TeacherConsecutiveLimitConstraint extends BaseConstraint {
 }
 
 /**
- * 교사 하루 최대 수업 수 제약조건 (하드)
+ * 교사 하루 최대 수업 수 제약조건
  */
 export class TeacherDailyLimitConstraint extends BaseConstraint {
   readonly metadata = {
     id: 'teacher_daily_limit',
     name: '교사 하루 최대 수업 수',
     description: '교사가 하루에 배정할 수 있는 최대 수업 수를 제한합니다.',
-    type: 'hard' as const,
     priority: 'high' as const,
-    category: 'teacher',
+    category: 'teacher' as const,
+    isHard: true,
   };
 
   checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
@@ -317,12 +338,12 @@ export class TeacherDailyLimitConstraint extends BaseConstraint {
       return this.success();
     }
 
-    const teacher = timetable.teachers.find((t) => t.id === slot.teacherId);
+    const teacher = this.findTeacher(timetable, slot.teacherId);
     if (!teacher || !teacher.maxHoursPerDay) {
       return this.success();
     }
 
-    const dailyCount = countDailyLessonsForTeacher(timetable, slot.teacherId, slot.day);
+    const dailyCount = countTeacherDailyLessons(timetable, slot.teacherId, slot.day);
 
     if (dailyCount >= teacher.maxHoursPerDay) {
       return this.failure(
@@ -348,7 +369,7 @@ export class TeacherDailyLimitConstraint extends BaseConstraint {
       if (!teacher.maxHoursPerDay) continue;
 
       for (const day of timetable.schoolSchedule.days) {
-        const dailyCount = countDailyLessonsForTeacher(timetable, teacher.id, day);
+        const dailyCount = countTeacherDailyLessons(timetable, teacher.id, day);
 
         if (dailyCount > teacher.maxHoursPerDay) {
           violations.push(
@@ -359,7 +380,11 @@ export class TeacherDailyLimitConstraint extends BaseConstraint {
     }
 
     if (violations.length > 0) {
-      return this.failure(`교사 하루 최대 수업 수 위반 ${violations.length}건 발견`, 'error', { violations });
+      return this.failure(
+        `교사 하루 최대 수업 수 위반 ${violations.length}건 발견`,
+        'error',
+        { violations }
+      );
     }
 
     return this.success();
@@ -374,16 +399,16 @@ export class TeacherWeeklyHoursConstraint extends BaseConstraint {
     id: 'teacher_weekly_hours',
     name: '교사 주당 시수',
     description: '교사별 주당 시수가 정확히 충족되어야 합니다.',
-    type: 'hard' as const,
     priority: 'critical' as const,
-    category: 'teacher',
+    category: 'teacher' as const,
+    isHard: true,
   };
 
   validateTimetable(timetable: TimetableData): ConstraintEvaluationResult {
     const violations: string[] = [];
 
     for (const teacher of timetable.teachers) {
-      const assignedHours = countWeeklyHoursForTeacher(timetable, teacher.id);
+      const assignedHours = countTeacherWeeklyLessons(timetable, teacher.id);
 
       if (assignedHours !== teacher.weeklyHours) {
         violations.push(
@@ -393,14 +418,121 @@ export class TeacherWeeklyHoursConstraint extends BaseConstraint {
     }
 
     if (violations.length > 0) {
-      return this.failure(`교사 주당 시수 불일치 ${violations.length}건 발견`, 'error', { violations });
+      return this.failure(
+        `교사 주당 시수 불일치 ${violations.length}건 발견`,
+        'error',
+        { violations }
+      );
     }
 
     return this.success();
   }
 
   checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
-    // 배치 전에는 검사 불가 (전체 검증만 가능)
+    // 배치 전에는 검사 불가 (전체 시간표 완성 후 검증)
+    return this.success();
+  }
+}
+
+/**
+ * 점심 전 과도한 배치 방지 제약조건
+ */
+export class LunchBeforeOverloadConstraint extends BaseConstraint {
+  readonly metadata = {
+    id: 'lunch_before_overload',
+    name: '점심 전 과도한 배치 방지',
+    description: '점심 시간 전에 특정 교사에게 수업이 과도하게 몰리지 않도록 합니다.',
+    priority: 'high' as const,
+    category: 'teacher' as const,
+    isHard: true,
+  };
+
+  constructor(
+    private lunchPeriod: number = 4,
+    private maxBeforeLunch: number = 2
+  ) {
+    super();
+  }
+
+  checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
+    if (!slot.teacherId || slot.period > this.lunchPeriod) {
+      return this.success();
+    }
+
+    const teacher = this.findTeacher(timetable, slot.teacherId);
+    if (!teacher) {
+      return this.success();
+    }
+
+    let beforeLunchCount = 0;
+    for (const classId of Object.keys(timetable.timetable)) {
+      const classSchedule = timetable.timetable[classId];
+      const daySchedule = classSchedule[slot.day];
+      if (!daySchedule) continue;
+
+      for (let p = 1; p <= this.lunchPeriod; p++) {
+        const s = daySchedule[p];
+        if (s && s.teacherId === slot.teacherId) {
+          beforeLunchCount++;
+        }
+      }
+    }
+
+    if (beforeLunchCount >= this.maxBeforeLunch) {
+      return this.failure(
+        `${teacher.name} 교사가 ${slot.day}요일 점심 전(${this.lunchPeriod}교시까지)에 이미 ${beforeLunchCount}교시 수업 중입니다. (최대 ${this.maxBeforeLunch}교시)`,
+        'error',
+        {
+          teacherId: teacher.id,
+          teacherName: teacher.name,
+          day: slot.day,
+          currentCount: beforeLunchCount,
+          maxCount: this.maxBeforeLunch,
+          lunchPeriod: this.lunchPeriod,
+        }
+      );
+    }
+
+    return this.success();
+  }
+
+  validateTimetable(timetable: TimetableData): ConstraintEvaluationResult {
+    const violations: string[] = [];
+    const lunchPeriod = timetable.schoolSchedule.lunchPeriod || this.lunchPeriod;
+
+    for (const teacher of timetable.teachers) {
+      for (const day of timetable.schoolSchedule.days) {
+        let beforeLunchCount = 0;
+
+        for (const classId of Object.keys(timetable.timetable)) {
+          const classSchedule = timetable.timetable[classId];
+          const daySchedule = classSchedule[day];
+          if (!daySchedule) continue;
+
+          for (let period = 1; period <= lunchPeriod; period++) {
+            const slot = daySchedule[period];
+            if (slot && slot.teacherId === teacher.id) {
+              beforeLunchCount++;
+            }
+          }
+        }
+
+        if (beforeLunchCount > this.maxBeforeLunch) {
+          violations.push(
+            `${teacher.name} 교사가 ${day}요일 점심 전(${lunchPeriod}교시까지)에 ${beforeLunchCount}교시 수업 (최대 ${this.maxBeforeLunch}교시)`
+          );
+        }
+      }
+    }
+
+    if (violations.length > 0) {
+      return this.failure(
+        `점심 전 과도한 배치 ${violations.length}건 발견`,
+        'error',
+        { violations }
+      );
+    }
+
     return this.success();
   }
 }

@@ -1,23 +1,28 @@
-// 특별실 중복 사용 금지 제약조건
+// 시설/교실 관련 제약조건
 
 import { BaseConstraint } from './BaseConstraint';
-import { Slot, TimetableData, ConstraintEvaluationResult, ConstraintMetadata } from './types';
+import { Slot, TimetableData, ConstraintEvaluationResult } from './types';
+import { isRoomOccupiedAt, getSlot } from './utils';
 
+/**
+ * 특별실 중복 사용 금지 제약조건
+ */
 export class SpecialRoomConflictConstraint extends BaseConstraint {
-  metadata: ConstraintMetadata = {
+  readonly metadata = {
     id: 'special_room_conflict',
     name: '특별실 중복 사용 금지',
     description: '같은 특별실을 같은 시간에 여러 반이 사용할 수 없습니다.',
-    priority: 'high',
-    category: 'room',
+    priority: 'high' as const,
+    category: 'facility' as const,
+    isHard: true,
   };
 
   checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
-    if (!slot.subjectId) {
+    if (!slot.subjectId || !slot.roomId) {
       return this.success();
     }
 
-    const subject = timetable.subjects.find(s => s.id === slot.subjectId);
+    const subject = this.findSubject(timetable, slot.subjectId);
     if (!subject?.requiresSpecialRoom || !subject.specialRoomType) {
       return this.success();
     }
@@ -25,7 +30,7 @@ export class SpecialRoomConflictConstraint extends BaseConstraint {
     // 같은 특별실을 같은 시간에 사용하는 다른 반이 있는지 확인
     const conflictingClass = this.findConflictingClass(
       timetable,
-      subject.specialRoomType,
+      slot.roomId,
       slot.day,
       slot.period,
       slot.classId
@@ -39,6 +44,7 @@ export class SpecialRoomConflictConstraint extends BaseConstraint {
           subjectId: subject.id,
           subjectName: subject.name,
           specialRoomType: subject.specialRoomType,
+          roomId: slot.roomId,
           day: slot.day,
           period: slot.period,
           conflictingClass,
@@ -58,18 +64,18 @@ export class SpecialRoomConflictConstraint extends BaseConstraint {
       const classSchedule = timetable.timetable[classId];
 
       for (const day of timetable.schoolSchedule.days) {
-        const daySchedule = classSchedule[day as keyof typeof classSchedule];
+        const daySchedule = classSchedule[day];
         if (!daySchedule) continue;
 
-        const maxPeriod = timetable.schoolSchedule.periodsPerDay[day as keyof typeof timetable.schoolSchedule.periodsPerDay];
+        const maxPeriod = timetable.schoolSchedule.periodsPerDay[day];
         for (let period = 1; period <= maxPeriod; period++) {
           const slot = daySchedule[period];
-          if (!slot || !slot.subjectId) continue;
+          if (!slot || !slot.subjectId || !slot.roomId) continue;
 
-          const subject = timetable.subjects.find(s => s.id === slot.subjectId);
+          const subject = this.findSubject(timetable, slot.subjectId);
           if (!subject?.requiresSpecialRoom || !subject.specialRoomType) continue;
 
-          const key = `${subject.specialRoomType}_${day}_${period}`;
+          const key = `${slot.roomId}_${day}_${period}`;
           if (!roomUsage[key]) {
             roomUsage[key] = [];
           }
@@ -81,11 +87,12 @@ export class SpecialRoomConflictConstraint extends BaseConstraint {
     // 중복 확인
     for (const [key, classes] of Object.entries(roomUsage)) {
       if (classes.length > 1) {
-        const [roomType, day, period] = key.split('_');
-        const classNames = classes.map(c => timetable.classes.find(cl => cl.id === c.classId)?.name || c.classId).join(', ');
+        const [roomId, day, period] = key.split('_');
+        const room = timetable.rooms?.find(r => r.id === roomId);
+        const classNames = classes.map(c => this.findClass(timetable, c.classId)?.name || c.classId).join(', ');
 
         violations.push(
-          `${roomType}이(가) ${day}요일 ${period}교시에 ${classes.length}개 반(${classNames})에서 중복 사용`
+          `${room?.name || roomId}이(가) ${day}요일 ${period}교시에 ${classes.length}개 반(${classNames})에서 중복 사용`
         );
       }
     }
@@ -103,7 +110,7 @@ export class SpecialRoomConflictConstraint extends BaseConstraint {
 
   private findConflictingClass(
     timetable: TimetableData,
-    roomType: string,
+    roomId: string,
     day: string,
     period: number,
     excludeClassId: string
@@ -111,12 +118,9 @@ export class SpecialRoomConflictConstraint extends BaseConstraint {
     for (const classId of Object.keys(timetable.timetable)) {
       if (classId === excludeClassId) continue;
 
-      const slot = this.getSlot(timetable, classId, day, period);
-      if (!slot || !slot.subjectId) continue;
-
-      const subject = timetable.subjects.find(s => s.id === slot.subjectId);
-      if (subject?.requiresSpecialRoom && subject.specialRoomType === roomType) {
-        return timetable.classes.find(c => c.id === classId)?.name || classId;
+      const slot = getSlot(timetable, classId, day as any, period);
+      if (slot && slot.roomId === roomId) {
+        return this.findClass(timetable, classId)?.name || classId;
       }
     }
 

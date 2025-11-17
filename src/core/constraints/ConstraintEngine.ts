@@ -1,35 +1,34 @@
 // 제약조건 엔진 통합 클래스
 
 import { IConstraint, BaseConstraint } from './BaseConstraint';
-import { Slot, TimetableData, ConstraintEvaluationResult, ValidationReport, ViolationReport } from './types';
+import { Slot, TimetableData, ConstraintEvaluationResult, ConstraintEngineConfig } from './types';
 
 // 하드 제약조건
-import { TeacherAvailabilityConstraint } from './hard/TeacherConstraints';
-import { TeacherNoOverlapConstraint } from './hard/TeacherConstraints';
-import { TeacherConsecutiveLimitConstraint } from './hard/TeacherConstraints';
-import { TeacherDailyLimitConstraint } from './hard/TeacherConstraints';
-import { TeacherWeeklyHoursConstraint } from './hard/TeacherConstraints';
-import { ClassNoOverlapConstraint } from './hard/ClassConstraints';
-import { GradeCommonTimeConstraint } from './hard/ClassConstraints';
-import { SubjectWeeklyHoursConstraint } from './hard/SubjectConstraints';
-import { SubjectMaxPerDayConstraint } from './hard/SubjectConstraints';
-import { ConsecutiveRequiredConstraint } from './hard/SubjectConstraints';
-import { SpecialRoomConflictConstraint } from './hard/FacilityConstraints';
-import { CoTeachingConstraint } from './hard/SpecialProgramConstraints';
-import { LevelBasedTeachingConstraint } from './hard/SpecialProgramConstraints';
+import { TeacherAvailabilityConstraint } from './teacher_constraints';
+import { TeacherNoOverlapConstraint } from './teacher_constraints';
+import { TeacherConsecutiveLimitConstraint } from './teacher_constraints';
+import { TeacherDailyLimitConstraint } from './teacher_constraints';
+import { TeacherWeeklyHoursConstraint } from './teacher_constraints';
+import { LunchBeforeOverloadConstraint } from './teacher_constraints';
+
+import { ClassNoOverlapConstraint } from './class_constraints';
+import { GradeCommonTimeConstraint } from './class_constraints';
+
+import { SubjectWeeklyHoursConstraint } from './subject_constraints';
+import { SubjectMaxPerDayConstraint } from './subject_constraints';
+import { SubjectFixedTimeConstraint } from './subject_constraints';
+import { ConsecutiveRequiredConstraint } from './subject_constraints';
+
+import { SpecialRoomConflictConstraint } from './facility_constraints';
+
+import { CoTeachingConstraint } from './special_programs_constraints';
+import { LevelBasedTeachingConstraint } from './special_programs_constraints';
 
 // 소프트 제약조건
-import { LunchBeforeOverloadSoftConstraint } from './soft/SoftConstraints';
-import { MinimizeConsecutiveSoftConstraint } from './soft/SoftConstraints';
-import { SubjectBalanceSoftConstraint } from './soft/SoftConstraints';
-import { PreferredPeriodSoftConstraint } from './soft/SoftConstraints';
-
-export interface ConstraintEngineConfig {
-  maxConsecutivePeriods?: number;
-  lunchPeriod?: number;
-  maxBeforeLunch?: number;
-  enableSoftConstraints?: boolean;
-}
+import { MinimizeConsecutiveConstraint } from './soft_constraints';
+import { BalancedDistributionConstraint } from './soft_constraints';
+import { MorningAfternoonBalanceConstraint } from './soft_constraints';
+import { StudentFatigueConstraint } from './soft_constraints';
 
 export class ConstraintEngine {
   private hardConstraints: Map<string, IConstraint> = new Map();
@@ -37,17 +36,17 @@ export class ConstraintEngine {
   private defaultHardConstraints: IConstraint[] = [];
   private defaultSoftConstraints: IConstraint[] = [];
 
-  constructor(private data: TimetableData, config?: ConstraintEngineConfig) {
-    this.initializeDefaultConstraints(config);
+  constructor(private data: TimetableData, private config?: ConstraintEngineConfig) {
+    this.initializeConstraints();
   }
 
   /**
-   * 기본 제약조건 초기화
+   * 제약조건 초기화
    */
-  private initializeDefaultConstraints(config?: ConstraintEngineConfig): void {
-    const maxConsecutive = config?.maxConsecutivePeriods || 3;
-    const lunchPeriod = config?.lunchPeriod || data.schoolSchedule.lunchPeriod || 4;
-    const maxBeforeLunch = config?.maxBeforeLunch || 3;
+  private initializeConstraints(): void {
+    const maxConsecutive = this.config?.maxConsecutivePeriods || 3;
+    const lunchPeriod = this.config?.lunchPeriod || this.data.schoolSchedule.lunchPeriod || 4;
+    const maxBeforeLunch = this.config?.maxBeforeLunch || 2;
 
     // 하드 제약조건 초기화
     this.defaultHardConstraints = [
@@ -56,10 +55,12 @@ export class ConstraintEngine {
       new TeacherConsecutiveLimitConstraint(maxConsecutive),
       new TeacherDailyLimitConstraint(),
       new TeacherWeeklyHoursConstraint(),
+      new LunchBeforeOverloadConstraint(lunchPeriod, maxBeforeLunch),
       new ClassNoOverlapConstraint(),
       new GradeCommonTimeConstraint(),
       new SubjectWeeklyHoursConstraint(),
       new SubjectMaxPerDayConstraint(),
+      new SubjectFixedTimeConstraint(),
       new ConsecutiveRequiredConstraint(),
       new SpecialRoomConflictConstraint(),
       new CoTeachingConstraint(),
@@ -72,15 +73,14 @@ export class ConstraintEngine {
     }
 
     // 소프트 제약조건 초기화 (옵션)
-    if (config?.enableSoftConstraints !== false) {
+    if (this.config?.enableSoftConstraints !== false) {
       this.defaultSoftConstraints = [
-        new LunchBeforeOverloadSoftConstraint(maxBeforeLunch),
-        new MinimizeConsecutiveSoftConstraint(),
-        new SubjectBalanceSoftConstraint(),
-        new PreferredPeriodSoftConstraint(),
+        new MinimizeConsecutiveConstraint(),
+        new BalancedDistributionConstraint(),
+        new MorningAfternoonBalanceConstraint(lunchPeriod),
+        new StudentFatigueConstraint(lunchPeriod),
       ];
 
-      // 소프트 제약조건 등록
       for (const constraint of this.defaultSoftConstraints) {
         this.softConstraints.set(constraint.metadata.id, constraint);
       }
@@ -91,7 +91,7 @@ export class ConstraintEngine {
    * 제약조건 추가
    */
   addConstraint(constraint: IConstraint): void {
-    if (constraint.metadata.type === 'hard') {
+    if (constraint.metadata.isHard) {
       this.hardConstraints.set(constraint.metadata.id, constraint);
     } else {
       this.softConstraints.set(constraint.metadata.id, constraint);
@@ -103,9 +103,9 @@ export class ConstraintEngine {
    */
   removeConstraint(constraintId: string): boolean {
     // 기본 제약조건은 제거 불가
-    const isDefaultHard = this.defaultHardConstraints.some((c) => c.metadata.id === constraintId);
-    const isDefaultSoft = this.defaultSoftConstraints.some((c) => c.metadata.id === constraintId);
-
+    const isDefaultHard = this.defaultHardConstraints.some(c => c.metadata.id === constraintId);
+    const isDefaultSoft = this.defaultSoftConstraints.some(c => c.metadata.id === constraintId);
+    
     if (isDefaultHard || isDefaultSoft) {
       console.warn(`기본 제약조건은 제거할 수 없습니다: ${constraintId}`);
       return false;
@@ -134,54 +134,52 @@ export class ConstraintEngine {
   /**
    * 슬롯 배치 전 평가 (하드 제약조건만)
    * @param slot 배치하려는 슬롯
+   * @param priority 제약조건 우선순위 필터
    * @returns 평가 결과
    */
-  evaluate(slot: Slot): ConstraintEvaluationResult {
+  evaluate(slot: Slot, priority?: 'critical' | 'high' | 'medium' | 'low' | 'all'): ConstraintEvaluationResult {
     const violatedConstraints: string[] = [];
     let hasError = false;
+    let hasWarning = false;
     const details: Record<string, any> = {};
 
-    // 하드 제약조건만 검사 (우선순위 순서)
-    const constraints = Array.from(this.hardConstraints.values()).sort((a, b) => {
-      const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-      return priorityOrder[a.metadata.priority] - priorityOrder[b.metadata.priority];
-    });
+    // 하드 제약조건만 평가
+    const constraints = Array.from(this.hardConstraints.values())
+      .filter(c => !priority || priority === 'all' || c.metadata.priority === priority)
+      .sort((a, b) => {
+        const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+        return priorityOrder[a.metadata.priority] - priorityOrder[b.metadata.priority];
+      });
 
     for (const constraint of constraints) {
-      try {
-        const result = constraint.checkBeforePlacement(slot, this.data);
+      const result = constraint.checkBeforePlacement(slot, this.data);
 
-        if (!result.satisfied) {
-          violatedConstraints.push(constraint.metadata.id);
+      if (!result.satisfied) {
+        violatedConstraints.push(constraint.metadata.id);
 
-          if (result.severity === 'error') {
-            hasError = true;
-          }
-
-          details[constraint.metadata.id] = {
-            name: constraint.metadata.name,
-            reason: result.reason,
-            severity: result.severity,
-            details: result.details,
-          };
-
-          // Critical 제약조건 위반 시 즉시 반환
-          if (constraint.metadata.priority === 'critical' && result.severity === 'error') {
-            return {
-              satisfied: false,
-              reason: result.reason || `${constraint.metadata.name} 위반`,
-              violatedConstraints,
-              severity: 'error',
-              details,
-            };
-          }
+        if (result.severity === 'error') {
+          hasError = true;
+        } else {
+          hasWarning = true;
         }
-      } catch (error) {
-        console.error(`제약조건 평가 중 오류 (${constraint.metadata.id}):`, error);
-        return this.failure(`제약조건 평가 오류: ${constraint.metadata.name}`, 'error', {
-          constraintId: constraint.metadata.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
+
+        details[constraint.metadata.id] = {
+          name: constraint.metadata.name,
+          reason: result.reason,
+          severity: result.severity,
+          details: result.details,
+        };
+
+        // Critical 제약조건 위반 시 즉시 반환
+        if (constraint.metadata.priority === 'critical' && result.severity === 'error') {
+          return {
+            satisfied: false,
+            reason: result.reason || `${constraint.metadata.name} 위반`,
+            violatedConstraints,
+            severity: 'error',
+            details,
+          };
+        }
       }
     }
 
@@ -203,110 +201,128 @@ export class ConstraintEngine {
   }
 
   /**
-   * 전체 시간표 검증
+   * 전체 시간표 검증 (하드 제약조건)
    */
-  validateTimetable(): ValidationReport {
-    const hardViolations: ViolationReport[] = [];
-    const softViolations: ViolationReport[] = [];
-    let totalSoftScore = 0;
+  validateTimetable(priority?: 'critical' | 'high' | 'medium' | 'low' | 'all'): ConstraintEvaluationResult {
+    const violatedConstraints: string[] = [];
+    let hasError = false;
+    let hasWarning = false;
+    const details: Record<string, any> = {};
+    const allViolations: string[] = [];
 
-    // 하드 제약조건 검증
-    for (const constraint of this.hardConstraints.values()) {
-      try {
-        const result = constraint.validateTimetable(this.data);
+    const constraints = Array.from(this.hardConstraints.values())
+      .filter(c => !priority || priority === 'all' || c.metadata.priority === priority)
+      .sort((a, b) => {
+        const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+        return priorityOrder[a.metadata.priority] - priorityOrder[b.metadata.priority];
+      });
 
-        if (!result.satisfied) {
-          hardViolations.push({
-            constraintId: constraint.metadata.id,
-            constraintName: constraint.metadata.name,
-            severity: result.severity,
-            message: result.reason || `${constraint.metadata.name} 위반`,
-            affectedSlots: [],
-            details: result.details,
-          });
+    for (const constraint of constraints) {
+      const result = constraint.validateTimetable(this.data);
+
+      if (!result.satisfied) {
+        violatedConstraints.push(constraint.metadata.id);
+
+        if (result.severity === 'error') {
+          hasError = true;
+        } else {
+          hasWarning = true;
         }
-      } catch (error) {
-        console.error(`제약조건 검증 중 오류 (${constraint.metadata.id}):`, error);
-        hardViolations.push({
-          constraintId: constraint.metadata.id,
-          constraintName: constraint.metadata.name,
-          severity: 'error',
-          message: `검증 오류: ${error instanceof Error ? error.message : String(error)}`,
-          affectedSlots: [],
-        });
+
+        details[constraint.metadata.id] = {
+          name: constraint.metadata.name,
+          reason: result.reason,
+          severity: result.severity,
+          details: result.details,
+        };
+
+        if (result.details?.violations) {
+          allViolations.push(...result.details.violations);
+        }
       }
     }
 
-    // 소프트 제약조건 점수 계산
-    for (const constraint of this.softConstraints.values()) {
-      try {
-        if (constraint.calculateSoftScore) {
-          const score = constraint.calculateSoftScore(this.data);
-          totalSoftScore += score;
-
-          if (score > 0) {
-            const result = constraint.validateTimetable(this.data);
-            softViolations.push({
-              constraintId: constraint.metadata.id,
-              constraintName: constraint.metadata.name,
-              severity: 'warning',
-              message: result.reason || `${constraint.metadata.name} 최적화 필요`,
-              affectedSlots: [],
-              details: { score },
-            });
-          }
-        }
-      } catch (error) {
-        console.error(`소프트 제약조건 계산 중 오류 (${constraint.metadata.id}):`, error);
-      }
+    if (violatedConstraints.length > 0) {
+      return {
+        satisfied: false,
+        reason: `${violatedConstraints.length}개 제약조건 위반 발견`,
+        violatedConstraints,
+        severity: hasError ? 'error' : 'warning',
+        details: {
+          ...details,
+          allViolations,
+        },
+      };
     }
 
     return {
-      isValid: hardViolations.length === 0,
-      hardViolations,
-      softViolations,
-      totalScore: totalSoftScore,
-      summary: {
-        totalConstraints: this.hardConstraints.size + this.softConstraints.size,
-        hardConstraints: this.hardConstraints.size,
-        softConstraints: this.softConstraints.size,
-        hardViolations: hardViolations.length,
-        softViolations: softViolations.length,
-      },
+      satisfied: true,
+      violatedConstraints: [],
+      severity: 'error',
     };
+  }
+
+  /**
+   * 소프트 제약조건 점수 계산
+   */
+  calculateSoftScore(): number {
+    let totalScore = 0;
+
+    const constraints = Array.from(this.softConstraints.values());
+    for (const constraint of constraints) {
+      if (constraint.calculateSoftScore) {
+        const score = constraint.calculateSoftScore(this.data);
+        totalScore += score;
+      }
+    }
+
+    return totalScore;
   }
 
   /**
    * 제약조건 리포트 생성
    */
   generateReport(): {
-    totalConstraints: number;
+    totalHardConstraints: number;
+    totalSoftConstraints: number;
     constraints: Array<{
       id: string;
       name: string;
       description: string;
-      type: string;
       priority: string;
       category: string;
+      isHard: boolean;
     }>;
-    validationResult: ValidationReport;
+    validationResult: ConstraintEvaluationResult;
+    softScore: number;
   } {
-    const allConstraints = [...this.hardConstraints.values(), ...this.softConstraints.values()];
-    const constraints = allConstraints.map((c) => ({
+    const hardConstraints = Array.from(this.hardConstraints.values()).map(c => ({
       id: c.metadata.id,
       name: c.metadata.name,
       description: c.metadata.description,
-      type: c.metadata.type,
       priority: c.metadata.priority,
       category: c.metadata.category,
+      isHard: true,
+    }));
+
+    const softConstraints = Array.from(this.softConstraints.values()).map(c => ({
+      id: c.metadata.id,
+      name: c.metadata.name,
+      description: c.metadata.description,
+      priority: c.metadata.priority,
+      category: c.metadata.category,
+      isHard: false,
     }));
 
     const validationResult = this.validateTimetable();
+    const softScore = this.calculateSoftScore();
 
     return {
-      totalConstraints: allConstraints.length,
-      constraints,
+      totalHardConstraints: this.hardConstraints.size,
+      totalSoftConstraints: this.softConstraints.size,
+      constraints: [...hardConstraints, ...softConstraints],
       validationResult,
+      softScore,
     };
   }
 
@@ -315,29 +331,7 @@ export class ConstraintEngine {
    */
   updateData(data: TimetableData): void {
     this.data = data;
-    // 기본 제약조건 재초기화 (설정 변경 반영)
-    const config = {
-      maxConsecutivePeriods: 3,
-      lunchPeriod: data.schoolSchedule.lunchPeriod,
-      maxBeforeLunch: 3,
-    };
-    this.initializeDefaultConstraints(config);
-  }
-
-  /**
-   * 실패 결과 생성 헬퍼
-   */
-  private failure(
-    reason: string,
-    severity: 'error' | 'warning' = 'error',
-    details?: Record<string, any>
-  ): ConstraintEvaluationResult {
-    return {
-      satisfied: false,
-      reason,
-      violatedConstraints: [],
-      severity,
-      details,
-    };
+    // 제약조건 재초기화 (설정 변경 반영)
+    this.initializeConstraints();
   }
 }

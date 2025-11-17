@@ -102,4 +102,27 @@ export abstract class BaseConstraint implements IConstraint {
     }
     return { valid: true };
   }
+
+  /**
+   * 교사 찾기 헬퍼
+   */
+  protected findTeacher(timetable: TimetableData, teacherId: string | null) {
+    if (!teacherId) return null;
+    return timetable.teachers.find(t => t.id === teacherId) || null;
+  }
+
+  /**
+   * 과목 찾기 헬퍼
+   */
+  protected findSubject(timetable: TimetableData, subjectId: string | null) {
+    if (!subjectId) return null;
+    return timetable.subjects.find(s => s.id === subjectId) || null;
+  }
+
+  /**
+   * 학급 찾기 헬퍼
+   */
+  protected findClass(timetable: TimetableData, classId: string) {
+    return timetable.classes.find(c => c.id === classId) || null;
+  }
 }
