@@ -41,7 +41,7 @@ export class ConstraintEngine {
       }),
       new MaxDailyLessonForTeacherConstraint(),
       new LunchBeforeOverloadConstraint({
-        lunchPeriod: config?.lunchPeriod || data.schoolSchedule.lunchPeriod || 4,
+        lunchPeriod: config?.lunchPeriod || this.data.schoolSchedule.lunchPeriod || 4,
         maxBeforeLunch: config?.maxBeforeLunch || 3,
       }),
       new ConsecutiveRequiredConstraint(),

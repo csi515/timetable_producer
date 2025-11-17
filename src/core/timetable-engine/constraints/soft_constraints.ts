@@ -1,372 +1,260 @@
-// 소프트 제약조건
+// 소프트 제약조건 (가능하면 지키기)
 
 import { BaseConstraint } from './BaseConstraint';
-import { TimetableSlot, TimetableData, ConstraintResult } from '../types';
+import { Slot, TimetableData, ConstraintEvaluationResult } from '../types';
 
 /**
- * 교사 연속 수업 최소화 (Soft)
+ * 교사 연속 수업 최소화 (소프트)
  */
 export class MinimizeConsecutiveLessonsConstraint extends BaseConstraint {
-  id = 'minimize_consecutive';
-  name = '교사 연속 수업 최소화';
-  type = 'soft' as const;
-  priority = 5;
+  metadata = {
+    id: 'minimize_consecutive',
+    name: '교사 연속 수업 최소화',
+    description: '교사의 연속 수업을 최소화합니다.',
+    type: 'soft' as const,
+    priority: 'medium' as const,
+    category: 'teacher',
+  };
 
-  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult {
-    if (!slot.teacherId || !slot.classId) return this.success();
-
-    // 연속 수업이 되는지 확인
-    const consecutiveCount = this.countConsecutivePeriods(
-      timetable,
-      slot.teacherId,
-      slot.classId,
-      slot.day,
-      slot.period
-    );
-
-    if (consecutiveCount > 0) {
-      const penalty = consecutiveCount * 2; // 연속 수업 페널티
-      return this.failure(
-        `연속 수업으로 인한 피로도 증가`,
-        {
-          teacherId: slot.teacherId,
-          classId: slot.classId,
-          day: slot.day,
-          period: slot.period,
-          consecutiveCount: consecutiveCount + 1,
-        },
-        penalty
-      );
-    }
-
+  checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
+    // 소프트 제약조건이므로 항상 통과
     return this.success();
   }
 
-  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[] {
-    const violations: ConstraintResult[] = [];
-    let totalPenalty = 0;
+  validateTimetable(timetable: TimetableData): ConstraintEvaluationResult {
+    // 소프트 제약조건이므로 항상 통과
+    return this.success();
+  }
 
-    for (const teacher of data.teachers) {
-      for (const classId of Object.keys(timetable)) {
-        const classSchedule = timetable[classId];
-        for (const day of data.schoolConfig.days) {
-          const daySchedule = classSchedule[day];
+  calculateSoftScore(timetable: TimetableData): number {
+    let penalty = 0;
+
+    for (const teacher of timetable.teachers) {
+      for (const classId of Object.keys(timetable.timetable)) {
+        const classSchedule = timetable.timetable[classId];
+
+        for (const day of timetable.schoolConfig.days) {
+          const daySchedule = classSchedule[day as keyof typeof classSchedule];
           if (!daySchedule) continue;
 
-          const maxPeriod = data.schoolConfig.periodsPerDay[day];
+          const maxPeriod = timetable.schoolConfig.periodsPerDay[day];
           let consecutiveCount = 0;
 
           for (let period = 1; period <= maxPeriod; period++) {
             const slot = daySchedule[period];
-            const isAssigned = !this.isSlotEmpty(slot) && slot.teacherId === teacher.id;
+            const isAssigned = slot && slot.teacherId === teacher.id;
 
             if (isAssigned) {
               consecutiveCount++;
             } else {
               if (consecutiveCount > 1) {
-                totalPenalty += (consecutiveCount - 1) * 2;
-                const classItem = data.classes.find(c => c.id === classId);
-                violations.push(this.failure(
-                  `${teacher.name} 교사가 ${classItem?.name || classId}에서 ${day}요일에 연속 ${consecutiveCount}교시 수업`,
-                  {
-                    teacherId: teacher.id,
-                    teacherName: teacher.name,
-                    classId,
-                    className: classItem?.name,
-                    day,
-                    consecutiveCount,
-                  },
-                  (consecutiveCount - 1) * 2
-                ));
+                penalty += (consecutiveCount - 1) * 2; // 연속 수업당 2점 페널티
               }
               consecutiveCount = 0;
             }
           }
+
+          if (consecutiveCount > 1) {
+            penalty += (consecutiveCount - 1) * 2;
+          }
         }
       }
     }
 
-    return violations;
-  }
-
-  private countConsecutivePeriods(
-    timetable: any,
-    teacherId: string,
-    classId: string,
-    day: string,
-    period: number
-  ): number {
-    const classSchedule = timetable[classId];
-    if (!classSchedule) return 0;
-
-    const daySchedule = classSchedule[day];
-    if (!daySchedule) return 0;
-
-    let count = 0;
-
-    // 앞쪽 연속 교시 확인
-    for (let p = period - 1; p >= 1; p--) {
-      const slot = daySchedule[p];
-      if (!this.isSlotEmpty(slot) && slot.teacherId === teacherId) {
-        count++;
-      } else {
-        break;
-      }
-    }
-
-    // 뒤쪽 연속 교시 확인
-    for (let p = period + 1; p <= 10; p++) {
-      const slot = daySchedule[p];
-      if (!this.isSlotEmpty(slot) && slot.teacherId === teacherId) {
-        count++;
-      } else {
-        break;
-      }
-    }
-
-    return count;
+    return -penalty; // 페널티는 음수로 반환
   }
 }
 
 /**
- * 과목 간 균형 배치 (Soft)
+ * 과목 간 균형 배치 (소프트)
+ * 과목이 월~금 고르게 분포되도록
  */
-export class BalancedDistributionConstraint extends BaseConstraint {
-  id = 'balanced_distribution';
-  name = '과목 간 균형 배치';
-  type = 'soft' as const;
-  priority = 4;
+export class BalancedSubjectDistributionConstraint extends BaseConstraint {
+  metadata = {
+    id: 'balanced_subject_distribution',
+    name: '과목 균형 배치',
+    description: '과목이 주간에 고르게 분포되도록 합니다.',
+    type: 'soft' as const,
+    priority: 'low' as const,
+    category: 'subject',
+  };
 
-  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult {
-    // 배치 전에는 검사 불가 (전체 시간표 완성 후 검증)
+  checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
     return this.success();
   }
 
-  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[] {
-    const violations: ConstraintResult[] = [];
+  validateTimetable(timetable: TimetableData): ConstraintEvaluationResult {
+    return this.success();
+  }
 
-    for (const classItem of data.classes) {
-      const classSchedule = timetable[classItem.id];
+  calculateSoftScore(timetable: TimetableData): number {
+    let penalty = 0;
+
+    for (const classItem of timetable.classes) {
+      const classSchedule = timetable.timetable[classItem.id];
       if (!classSchedule) continue;
 
-      // 각 과목별 요일 분포 확인
-      const subjectDistribution: Record<string, Record<string, number>> = {};
+      for (const subject of timetable.subjects) {
+        const dayCounts: Record<string, number> = {};
 
-      for (const day of data.schoolConfig.days) {
-        const daySchedule = classSchedule[day];
-        if (!daySchedule) continue;
+        for (const day of timetable.schoolConfig.days) {
+          dayCounts[day] = 0;
+          const daySchedule = classSchedule[day as keyof typeof classSchedule];
+          if (!daySchedule) continue;
 
-        const maxPeriod = data.schoolConfig.periodsPerDay[day];
-        for (let period = 1; period <= maxPeriod; period++) {
-          const slot = daySchedule[period];
-          if (this.isSlotEmpty(slot) || !slot.subjectId) continue;
-
-          if (!subjectDistribution[slot.subjectId]) {
-            subjectDistribution[slot.subjectId] = {};
+          const maxPeriod = timetable.schoolConfig.periodsPerDay[day];
+          for (let period = 1; period <= maxPeriod; period++) {
+            const slot = daySchedule[period];
+            if (slot && slot.subjectId === subject.id) {
+              dayCounts[day]++;
+              break; // 하루에 하나만 카운트
+            }
           }
-          subjectDistribution[slot.subjectId][day] = (subjectDistribution[slot.subjectId][day] || 0) + 1;
         }
-      }
 
-      // 분포의 표준편차 계산
-      for (const [subjectId, dayCounts] of Object.entries(subjectDistribution)) {
+        // 분포의 표준편차 계산
         const counts = Object.values(dayCounts);
-        if (counts.length < 2) continue;
-
         const mean = counts.reduce((a, b) => a + b, 0) / counts.length;
         const variance = counts.reduce((sum, count) => sum + Math.pow(count - mean, 2), 0) / counts.length;
         const stdDev = Math.sqrt(variance);
 
         // 표준편차가 크면 페널티
         if (stdDev > 0.5) {
-          const subject = data.subjects.find(s => s.id === subjectId);
-          violations.push(this.failure(
-            `${classItem.name}의 ${subject?.name || subjectId} 과목이 요일별로 불균등하게 배정됨 (표준편차: ${stdDev.toFixed(2)})`,
-            {
-              subjectId,
-              subjectName: subject?.name,
-              classId: classItem.id,
-              className: classItem.name,
-              distribution: dayCounts,
-              stdDev,
-            },
-            stdDev * 3
-          ));
+          penalty += stdDev * 3;
         }
       }
     }
 
-    return violations;
+    return -penalty;
   }
 }
 
 /**
- * 오전/오후 몰림 방지 (Soft)
+ * 오전/오후 과목 몰림 방지 (소프트)
  */
-export class MorningAfternoonBalanceConstraint extends BaseConstraint {
-  id = 'morning_afternoon_balance';
-  name = '오전/오후 몰림 방지';
-  type = 'soft' as const;
-  priority = 4;
+export class PreventSubjectClusteringConstraint extends BaseConstraint {
+  metadata = {
+    id: 'prevent_subject_clustering',
+    name: '과목 몰림 방지',
+    description: '오전/오후에 특정 과목이 몰리지 않도록 합니다.',
+    type: 'soft' as const,
+    priority: 'medium' as const,
+    category: 'subject',
+  };
 
-  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult {
-    // 배치 전에는 검사 불가
+  checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
     return this.success();
   }
 
-  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[] {
-    const violations: ConstraintResult[] = [];
-    const lunchPeriod = data.schoolConfig.lunchPeriod;
+  validateTimetable(timetable: TimetableData): ConstraintEvaluationResult {
+    return this.success();
+  }
 
-    for (const classItem of data.classes) {
-      const classSchedule = timetable[classItem.id];
+  calculateSoftScore(timetable: TimetableData): number {
+    let penalty = 0;
+    const lunchPeriod = timetable.schoolConfig.lunchPeriod;
+
+    for (const classItem of timetable.classes) {
+      const classSchedule = timetable.timetable[classItem.id];
       if (!classSchedule) continue;
 
-      for (const day of data.schoolConfig.days) {
-        const daySchedule = classSchedule[day];
-        if (!daySchedule) continue;
-
-        const maxPeriod = data.schoolConfig.periodsPerDay[day];
+      for (const subject of timetable.subjects) {
         let morningCount = 0;
         let afternoonCount = 0;
 
-        // 오전/오후 수업 수 계산
-        for (let period = 1; period <= maxPeriod; period++) {
-          const slot = daySchedule[period];
-          if (this.isSlotEmpty(slot)) continue;
+        for (const day of timetable.schoolConfig.days) {
+          const daySchedule = classSchedule[day as keyof typeof classSchedule];
+          if (!daySchedule) continue;
 
-          if (period <= lunchPeriod) {
-            morningCount++;
-          } else {
-            afternoonCount++;
+          const maxPeriod = timetable.schoolConfig.periodsPerDay[day];
+          for (let period = 1; period <= maxPeriod; period++) {
+            const slot = daySchedule[period];
+            if (slot && slot.subjectId === subject.id) {
+              if (period <= lunchPeriod) {
+                morningCount++;
+              } else {
+                afternoonCount++;
+              }
+            }
           }
         }
 
-        // 불균형 확인 (차이가 2 이상이면 페널티)
-        const imbalance = Math.abs(morningCount - afternoonCount);
-        if (imbalance > 2) {
-          violations.push(this.failure(
-            `${classItem.name}이(가) ${day}요일에 오전 ${morningCount}교시, 오후 ${afternoonCount}교시로 불균형`,
-            {
-              classId: classItem.id,
-              className: classItem.name,
-              day,
-              morningCount,
-              afternoonCount,
-              imbalance,
-            },
-            imbalance * 2
-          ));
+        // 오전 또는 오후에 과도하게 몰리면 페널티
+        const total = morningCount + afternoonCount;
+        if (total > 0) {
+          const morningRatio = morningCount / total;
+          const afternoonRatio = afternoonCount / total;
+
+          if (morningRatio > 0.7 || afternoonRatio > 0.7) {
+            penalty += 5;
+          }
         }
       }
     }
 
-    return violations;
+    return -penalty;
   }
 }
 
 /**
- * 학생 피로도 고려 (Soft)
+ * 학생 피로도 고려 (소프트)
+ * 수학·국어 등 집중 과목은 1·2교시에 배치 우선
+ * 예체능 과목은 5·6교시 배치 우선
  */
 export class StudentFatigueConstraint extends BaseConstraint {
-  id = 'student_fatigue';
-  name = '학생 피로도 고려';
-  type = 'soft' as const;
-  priority = 5;
+  metadata = {
+    id: 'student_fatigue',
+    name: '학생 피로도 고려',
+    description: '집중 과목은 오전에, 예체능은 오후에 배치합니다.',
+    type: 'soft' as const,
+    priority: 'medium' as const,
+    category: 'subject',
+  };
 
-  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult {
-    if (!slot.subjectId) return this.success();
-
-    const subject = data.subjects.find(s => s.id === slot.subjectId);
-    if (!subject) return this.success();
-
-    // 집중 과목(수학, 국어 등)은 오전 우선
-    if (subject.difficulty === 'high' && slot.period > 3) {
-      return this.failure(
-        `${subject.name} 과목이 오후(${slot.period}교시)에 배정됨 (오전 배정 권장)`,
-        {
-          subjectId: subject.id,
-          subjectName: subject.name,
-          difficulty: subject.difficulty,
-          day: slot.day,
-          period: slot.period,
-        },
-        3
-      );
-    }
-
-    // 예체능 과목은 오후 우선
-    if (subject.difficulty === 'low' && slot.period <= 3) {
-      return this.failure(
-        `${subject.name} 과목이 오전(${slot.period}교시)에 배정됨 (오후 배정 권장)`,
-        {
-          subjectId: subject.id,
-          subjectName: subject.name,
-          difficulty: subject.difficulty,
-          day: slot.day,
-          period: slot.period,
-        },
-        2
-      );
-    }
-
+  checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
     return this.success();
   }
 
-  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[] {
-    const violations: ConstraintResult[] = [];
+  validateTimetable(timetable: TimetableData): ConstraintEvaluationResult {
+    return this.success();
+  }
 
-    for (const classItem of data.classes) {
-      const classSchedule = timetable[classItem.id];
+  calculateSoftScore(timetable: TimetableData): number {
+    let score = 0;
+
+    for (const classItem of timetable.classes) {
+      const classSchedule = timetable.timetable[classItem.id];
       if (!classSchedule) continue;
 
-      for (const day of data.schoolConfig.days) {
-        const daySchedule = classSchedule[day];
+      for (const day of timetable.schoolConfig.days) {
+        const daySchedule = classSchedule[day as keyof typeof classSchedule];
         if (!daySchedule) continue;
 
-        const maxPeriod = data.schoolConfig.periodsPerDay[day];
+        const maxPeriod = timetable.schoolConfig.periodsPerDay[day];
         for (let period = 1; period <= maxPeriod; period++) {
           const slot = daySchedule[period];
-          if (this.isSlotEmpty(slot) || !slot.subjectId) continue;
+          if (!slot || !slot.subjectId) continue;
 
-          const subject = data.subjects.find(s => s.id === slot.subjectId);
+          const subject = timetable.subjects.find(s => s.id === slot.subjectId);
           if (!subject) continue;
 
-          // 집중 과목이 오후에 배정된 경우
-          if (subject.difficulty === 'high' && period > 3) {
-            violations.push(this.failure(
-              `${classItem.name}의 ${subject.name} 과목이 오후(${period}교시)에 배정됨`,
-              {
-                subjectId: subject.id,
-                subjectName: subject.name,
-                classId: classItem.id,
-                className: classItem.name,
-                day,
-                period,
-              },
-              3
-            ));
+          // 집중 과목(핵심 과목)은 1-2교시에 배치되면 보너스
+          if (subject.isCoreSubject && (period === 1 || period === 2)) {
+            score += 3;
+          } else if (subject.isCoreSubject && period > 4) {
+            score -= 2; // 오후에 배치되면 페널티
           }
 
-          // 예체능 과목이 오전에 배정된 경우
-          if (subject.difficulty === 'low' && period <= 3) {
-            violations.push(this.failure(
-              `${classItem.name}의 ${subject.name} 과목이 오전(${period}교시)에 배정됨`,
-              {
-                subjectId: subject.id,
-                subjectName: subject.name,
-                classId: classItem.id,
-                className: classItem.name,
-                day,
-                period,
-              },
-              2
-            ));
+          // 예체능 과목은 5-6교시에 배치되면 보너스
+          if (subject.difficulty === 'low' && period >= 5) {
+            score += 2;
+          } else if (subject.difficulty === 'low' && period <= 2) {
+            score -= 1; // 오전에 배치되면 페널티
           }
         }
       }
     }
 
-    return violations;
+    return score;
   }
 }

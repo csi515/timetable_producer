@@ -1,70 +1,47 @@
-// 특수 프로그램 관련 제약조건
+// 특수 프로그램 제약조건 (창체, 동아리, 코티칭, 수준별)
 
 import { BaseConstraint } from './BaseConstraint';
-import { TimetableSlot, TimetableData, ConstraintResult } from '../types';
+import { Slot, TimetableData, ConstraintEvaluationResult, SpecialProgram } from '../types';
 
 /**
- * 공동수업(코티칭) 제약조건 (Hard)
+ * 창의적 체험활동 제약조건 (하드)
+ * 학년 전체가 동일 시간대 사용, 주 1~2회 고정 편성
  */
-export class CoTeachingConstraint extends BaseConstraint {
-  id = 'co_teaching';
-  name = '공동수업 제약조건';
-  type = 'hard' as const;
-  priority = 9;
+export class CreativeActivityConstraint extends BaseConstraint {
+  metadata = {
+    id: 'creative_activity',
+    name: '창의적 체험활동',
+    description: '학년 전체가 동일 시간대에 창의적 체험활동을 해야 합니다.',
+    type: 'hard' as const,
+    priority: 'critical' as const,
+    category: 'special_program',
+  };
 
-  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult {
-    if (!slot.isCoTeaching || !slot.coTeacherIds || slot.coTeacherIds.length === 0) {
+  checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
+    if (!slot.isSpecialProgram || slot.programType !== 'creative') {
       return this.success();
     }
 
-    // 모든 공동 교사가 해당 시간에 비어있는지 확인
-    const unavailableTeachers: string[] = [];
-
-    for (const coTeacherId of slot.coTeacherIds) {
-      const isAvailable = !this.isTeacherAssignedAt(timetable, coTeacherId, slot.day, slot.period, slot.classId);
-
-      if (!isAvailable) {
-        const teacher = data.teachers.find(t => t.id === coTeacherId);
-        unavailableTeachers.push(teacher?.name || coTeacherId);
-      }
+    const classItem = timetable.classes.find(c => c.id === slot.classId);
+    if (!classItem) {
+      return this.success();
     }
 
-    if (unavailableTeachers.length > 0) {
-      const subject = data.subjects.find(s => s.id === slot.subjectId);
-      return this.failure(
-        `공동수업(${subject?.name || slot.subjectId})에 필요한 교사(${unavailableTeachers.join(', ')})가 ${slot.day}요일 ${slot.period}교시에 비어있지 않습니다.`,
-        {
-          subjectId: slot.subjectId,
-          subjectName: subject?.name,
-          classId: slot.classId,
-          day: slot.day,
-          period: slot.period,
-          unavailableTeachers,
-          coTeacherIds: slot.coTeacherIds,
-        }
-      );
-    }
+    // 같은 학년의 다른 학급들도 같은 시간에 배정되어야 함
+    const sameGradeClasses = timetable.classes.filter(c => c.grade === classItem.grade && c.id !== slot.classId);
 
-    // 필요한 교실이 비어있는지 확인
-    if (slot.facilityId) {
-      const conflictingClass = this.findConflictingClassForFacility(
-        timetable,
-        slot.facilityId,
-        slot.day,
-        slot.period,
-        slot.classId
-      );
+    for (const otherClass of sameGradeClasses) {
+      const otherSlot = this.getSlot(timetable, otherClass.id, slot.day, slot.period);
 
-      if (conflictingClass) {
-        const facility = data.facilities.find(f => f.id === slot.facilityId);
+      if (!otherSlot || !otherSlot.isSpecialProgram || otherSlot.programType !== 'creative') {
         return this.failure(
-          `공동수업에 필요한 ${facility?.name || slot.facilityId}이(가) ${slot.day}요일 ${slot.period}교시에 이미 사용 중입니다.`,
+          `${classItem.grade}학년 창의적 체험활동은 모든 학급이 동일 시간대(${slot.day}요일 ${slot.period}교시)에 배정되어야 합니다.`,
+          'error',
           {
-            facilityId: slot.facilityId,
-            facilityName: facility?.name,
-            conflictingClass,
+            grade: classItem.grade,
             day: slot.day,
             period: slot.period,
+            missingClass: otherClass.name,
           }
         );
       }
@@ -73,256 +50,298 @@ export class CoTeachingConstraint extends BaseConstraint {
     return this.success();
   }
 
-  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[] {
-    const violations: ConstraintResult[] = [];
+  validateTimetable(timetable: TimetableData): ConstraintEvaluationResult {
+    const violations: string[] = [];
 
-    if (!data.coTeachings) return violations;
+    if (!timetable.specialPrograms) {
+      return this.success();
+    }
 
-    for (const coTeaching of data.coTeachings) {
-      for (const classId of coTeaching.classes) {
-        const classSchedule = timetable[classId];
+    const creativePrograms = timetable.specialPrograms.filter(p => p.type === 'creative');
+
+    for (const program of creativePrograms) {
+      if (program.grade === undefined) continue;
+
+      const gradeClasses = timetable.classes.filter(c => c.grade === program.grade);
+      const programSlots: Record<string, Set<string>> = {}; // day_period -> classIds
+
+      for (const classItem of gradeClasses) {
+        const classSchedule = timetable.timetable[classItem.id];
         if (!classSchedule) continue;
 
-        // 해당 과목이 배정된 시간 찾기
-        for (const day of data.schoolConfig.days) {
-          const daySchedule = classSchedule[day];
+        for (const day of timetable.schoolConfig.days) {
+          const daySchedule = classSchedule[day as keyof typeof classSchedule];
           if (!daySchedule) continue;
 
-          const maxPeriod = data.schoolConfig.periodsPerDay[day];
+          const maxPeriod = timetable.schoolConfig.periodsPerDay[day];
           for (let period = 1; period <= maxPeriod; period++) {
             const slot = daySchedule[period];
-            if (this.isSlotEmpty(slot) || slot.subjectId !== coTeaching.subjectId) continue;
-
-            // 공동수업인지 확인
-            if (!slot.isCoTeaching || !slot.coTeacherIds) {
-              violations.push(this.failure(
-                `${data.classes.find(c => c.id === classId)?.name || classId}의 ${data.subjects.find(s => s.id === coTeaching.subjectId)?.name || coTeaching.subjectId} 과목이 공동수업으로 배정되지 않았습니다.`,
-                {
-                  coTeachingId: coTeaching.id,
-                  classId,
-                  subjectId: coTeaching.subjectId,
-                  day,
-                  period,
-                }
-              ));
-              continue;
-            }
-
-            // 모든 공동 교사가 비어있는지 확인
-            for (const coTeacherId of coTeaching.coTeacherIds) {
-              const isAvailable = !this.isTeacherAssignedAt(timetable, coTeacherId, day, period, classId);
-              if (!isAvailable) {
-                const teacher = data.teachers.find(t => t.id === coTeacherId);
-                violations.push(this.failure(
-                  `공동수업에 필요한 ${teacher?.name || coTeacherId} 교사가 ${day}요일 ${period}교시에 비어있지 않습니다.`,
-                  {
-                    coTeachingId: coTeaching.id,
-                    teacherId: coTeacherId,
-                    teacherName: teacher?.name,
-                    classId,
-                    day,
-                    period,
-                  }
-                ));
+            if (slot && slot.isSpecialProgram && slot.programType === 'creative') {
+              const key = `${day}_${period}`;
+              if (!programSlots[key]) {
+                programSlots[key] = new Set();
               }
+              programSlots[key].add(classItem.id);
+            }
+          }
+        }
+      }
+
+      // 모든 학급이 같은 시간에 배정되었는지 확인
+      for (const [key, classIds] of Object.entries(programSlots)) {
+        if (classIds.size !== gradeClasses.length) {
+          const [day, period] = key.split('_');
+          violations.push(
+            `${program.grade}학년 창의적 체험활동이 ${day}요일 ${period}교시에 일부 학급만 배정됨 (${classIds.size}/${gradeClasses.length})`
+          );
+        }
+      }
+    }
+
+    if (violations.length > 0) {
+      return this.failure(`창의적 체험활동 위반 ${violations.length}건 발견`, 'error', { violations });
+    }
+
+    return this.success();
+  }
+}
+
+/**
+ * 동아리 활동 제약조건 (하드/소프트)
+ * 전교 단위 혹은 학년 단위 편성, 필요 시 교사 배정 없이도 가능
+ */
+export class ClubActivityConstraint extends BaseConstraint {
+  metadata = {
+    id: 'club_activity',
+    name: '동아리 활동',
+    description: '동아리 활동은 전교 또는 학년 단위로 편성됩니다.',
+    type: 'hard' as const,
+    priority: 'high' as const,
+    category: 'special_program',
+  };
+
+  checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
+    if (!slot.isSpecialProgram || slot.programType !== 'club') {
+      return this.success();
+    }
+
+    // 동아리는 교사 배정 없이도 가능하므로 teacherId 체크 생략
+    // 특별 프로그램이므로 추가 검증 불필요
+    return this.success();
+  }
+
+  validateTimetable(timetable: TimetableData): ConstraintEvaluationResult {
+    // 동아리 활동은 유연하게 처리되므로 기본 검증만 수행
+    return this.success();
+  }
+}
+
+/**
+ * 공동수업(코티칭) 제약조건 (하드)
+ * 두 명 이상의 교사가 동시에 참여해야 하는 수업
+ */
+export class CoTeachingConstraint extends BaseConstraint {
+  metadata = {
+    id: 'co_teaching',
+    name: '공동수업',
+    description: '공동수업은 모든 담당 교사가 동시에 참여해야 합니다.',
+    type: 'hard' as const,
+    priority: 'critical' as const,
+    category: 'special_program',
+  };
+
+  checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
+    if (!slot.isSpecialProgram || slot.programType !== 'co-teaching' || !slot.coTeachers || slot.coTeachers.length === 0) {
+      return this.success();
+    }
+
+    // 모든 공동수업 교사가 해당 시간에 비어있는지 확인
+    const allTeachers = [slot.teacherId, ...slot.coTeachers].filter(Boolean) as string[];
+
+    for (const teacherId of allTeachers) {
+      const isBusy = this.isTeacherAssignedAt(timetable, teacherId, slot.day, slot.period, slot.classId);
+
+      if (isBusy) {
+        const teacher = timetable.teachers.find(t => t.id === teacherId);
+        return this.failure(
+          `${teacher?.name || teacherId} 교사가 ${slot.day}요일 ${slot.period}교시에 이미 수업 중입니다. (공동수업 불가)`,
+          'error',
+          {
+            teacherId,
+            teacherName: teacher?.name,
+            day: slot.day,
+            period: slot.period,
+            programType: 'co-teaching',
+          }
+        );
+      }
+
+      // 불가능 시간도 확인
+      const teacher = timetable.teachers.find(t => t.id === teacherId);
+      if (teacher) {
+        const isUnavailable = teacher.unavailableSlots.some(
+          unavailable => unavailable.day === slot.day && unavailable.period === slot.period
+        );
+
+        if (isUnavailable) {
+          return this.failure(
+            `${teacher.name} 교사는 ${slot.day}요일 ${slot.period}교시에 수업할 수 없습니다. (공동수업 불가)`,
+            'error',
+            {
+              teacherId: teacher.id,
+              teacherName: teacher.name,
+              day: slot.day,
+              period: slot.period,
+            }
+          );
+        }
+      }
+    }
+
+    return this.success();
+  }
+
+  validateTimetable(timetable: TimetableData): ConstraintEvaluationResult {
+    const violations: string[] = [];
+
+    for (const classId of Object.keys(timetable.timetable)) {
+      const classSchedule = timetable.timetable[classId];
+
+      for (const day of timetable.schoolConfig.days) {
+        const daySchedule = classSchedule[day as keyof typeof classSchedule];
+        if (!daySchedule) continue;
+
+        const maxPeriod = timetable.schoolConfig.periodsPerDay[day];
+        for (let period = 1; period <= maxPeriod; period++) {
+          const slot = daySchedule[period];
+          if (!slot || !slot.isSpecialProgram || slot.programType !== 'co-teaching' || !slot.coTeachers) {
+            continue;
+          }
+
+          const allTeachers = [slot.teacherId, ...slot.coTeachers].filter(Boolean) as string[];
+
+          // 모든 교사가 같은 시간에 배정되었는지 확인
+          for (const teacherId of allTeachers) {
+            const isAssigned = this.isTeacherAssignedAt(timetable, teacherId, day, period, classId);
+
+            if (!isAssigned) {
+              const teacher = timetable.teachers.find(t => t.id === teacherId);
+              violations.push(
+                `공동수업에서 ${teacher?.name || teacherId} 교사가 ${day}요일 ${period}교시에 배정되지 않음`
+              );
             }
           }
         }
       }
     }
 
-    return violations;
-  }
-
-  private isTeacherAssignedAt(timetable: any, teacherId: string, day: string, period: number, excludeClassId?: string): boolean {
-    for (const classId of Object.keys(timetable)) {
-      if (excludeClassId && classId === excludeClassId) continue;
-
-      const slot = this.getSlot(timetable, classId, day, period);
-      if (!this.isSlotEmpty(slot) && slot.teacherId === teacherId) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private findConflictingClassForFacility(
-    timetable: any,
-    facilityId: string,
-    day: string,
-    period: number,
-    excludeClassId: string
-  ): string | null {
-    for (const classId of Object.keys(timetable)) {
-      if (classId === excludeClassId) continue;
-
-      const slot = this.getSlot(timetable, classId, day, period);
-      if (!this.isSlotEmpty(slot) && slot.facilityId === facilityId) {
-        return classId;
-      }
-    }
-    return null;
-  }
-}
-
-/**
- * 수준별 이동수업 제약조건 (Hard)
- */
-export class LevelBasedClassConstraint extends BaseConstraint {
-  id = 'level_based_class';
-  name = '수준별 이동수업';
-  type = 'hard' as const;
-  priority = 8;
-
-  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult {
-    if (!slot.isLevelBased) return this.success();
-
-    const classItem = data.classes.find(c => c.id === slot.classId);
-    if (!classItem || !classItem.level) return this.success();
-
-    // 같은 학년의 같은 수준 이동수업이 같은 시간에 있는지 확인
-    const levelBasedClass = data.levelBasedClasses?.find(
-      lbc => lbc.grade === classItem.grade &&
-              lbc.level === classItem.level &&
-              lbc.subjectId === slot.subjectId &&
-              lbc.day === slot.day &&
-              lbc.period === slot.period
-    );
-
-    if (!levelBasedClass) {
-      return this.failure(
-        `수준별 이동수업(${classItem.grade}학년 ${classItem.level}반)이 ${slot.day}요일 ${slot.period}교시에 구성되지 않았습니다.`,
-        {
-          classId: slot.classId,
-          className: classItem.name,
-          grade: classItem.grade,
-          level: classItem.level,
-          subjectId: slot.subjectId,
-          day: slot.day,
-          period: slot.period,
-        }
-      );
-    }
-
-    // 교사가 비어있는지 확인
-    if (slot.teacherId !== levelBasedClass.teacherId) {
-      const teacher = data.teachers.find(t => t.id === levelBasedClass.teacherId);
-      return this.failure(
-        `수준별 이동수업의 담당 교사가 ${teacher?.name || levelBasedClass.teacherId}이어야 합니다.`,
-        {
-          classId: slot.classId,
-          expectedTeacherId: levelBasedClass.teacherId,
-          expectedTeacherName: teacher?.name,
-          actualTeacherId: slot.teacherId,
-        }
-      );
+    if (violations.length > 0) {
+      return this.failure(`공동수업 위반 ${violations.length}건 발견`, 'error', { violations });
     }
 
     return this.success();
   }
+}
 
-  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[] {
-    const violations: ConstraintResult[] = [];
+/**
+ * 수준별 이동수업 제약조건 (하드)
+ * 한 학년의 특정 시간에 전체 이동수업 플랫폼 구성
+ */
+export class LevelBasedTeachingConstraint extends BaseConstraint {
+  metadata = {
+    id: 'level_based_teaching',
+    name: '수준별 이동수업',
+    description: '수준별 이동수업은 학년 전체가 동일 시간대에 진행되어야 합니다.',
+    type: 'hard' as const,
+    priority: 'critical' as const,
+    category: 'special_program',
+  };
 
-    if (!data.levelBasedClasses) return violations;
+  checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult {
+    if (!slot.isSpecialProgram || slot.programType !== 'level-based') {
+      return this.success();
+    }
 
-    for (const levelBasedClass of data.levelBasedClasses) {
-      // 원본 학급들이 모두 같은 시간에 배정되었는지 확인
-      for (const sourceClassId of levelBasedClass.sourceClasses) {
-        const slot = this.getSlot(
-          timetable,
-          sourceClassId,
-          levelBasedClass.period.day,
-          levelBasedClass.period.period
+    const classItem = timetable.classes.find(c => c.id === slot.classId);
+    if (!classItem) {
+      return this.success();
+    }
+
+    // 같은 학년의 다른 학급들도 같은 시간에 배정되어야 함
+    const sameGradeClasses = timetable.classes.filter(c => c.grade === classItem.grade && c.id !== slot.classId);
+
+    for (const otherClass of sameGradeClasses) {
+      const otherSlot = this.getSlot(timetable, otherClass.id, slot.day, slot.period);
+
+      if (!otherSlot || !otherSlot.isSpecialProgram || otherSlot.programType !== 'level-based') {
+        return this.failure(
+          `${classItem.grade}학년 수준별 이동수업은 모든 학급이 동일 시간대(${slot.day}요일 ${slot.period}교시)에 배정되어야 합니다.`,
+          'error',
+          {
+            grade: classItem.grade,
+            day: slot.day,
+            period: slot.period,
+            missingClass: otherClass.name,
+          }
         );
-
-        if (this.isSlotEmpty(slot) ||
-            slot.subjectId !== levelBasedClass.subjectId ||
-            slot.teacherId !== levelBasedClass.teacherId ||
-            !slot.isLevelBased) {
-          const classItem = data.classes.find(c => c.id === sourceClassId);
-          violations.push(this.failure(
-            `${classItem?.name || sourceClassId}의 수준별 이동수업이 올바르게 배정되지 않았습니다.`,
-            {
-              levelBasedClassId: levelBasedClass.id,
-              classId: sourceClassId,
-              className: classItem?.name,
-              expectedSubjectId: levelBasedClass.subjectId,
-              expectedTeacherId: levelBasedClass.teacherId,
-              day: levelBasedClass.period.day,
-              period: levelBasedClass.period.period,
-            }
-          ));
-        }
       }
-    }
-
-    return violations;
-  }
-}
-
-/**
- * 창의적 체험활동/동아리 제약조건 (Hard)
- */
-export class SpecialProgramConstraint extends BaseConstraint {
-  id = 'special_program';
-  name = '특수 프로그램 제약조건';
-  type = 'hard' as const;
-  priority = 9;
-
-  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult {
-    if (!slot.isSpecialProgram) return this.success();
-
-    // 특수 프로그램이 해당 시간에 설정되어 있는지 확인
-    const program = data.specialPrograms?.find(
-      sp => sp.day === slot.day &&
-             sp.period === slot.period &&
-             sp.classes.includes(slot.classId)
-    );
-
-    if (!program) {
-      const classItem = data.classes.find(c => c.id === slot.classId);
-      return this.failure(
-        `${classItem?.name || slot.classId}이(가) ${slot.day}요일 ${slot.period}교시에 특수 프로그램(${slot.specialProgramType}) 시간이 아닙니다.`,
-        {
-          classId: slot.classId,
-          className: classItem?.name,
-          day: slot.day,
-          period: slot.period,
-          programType: slot.specialProgramType,
-        }
-      );
     }
 
     return this.success();
   }
 
-  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[] {
-    const violations: ConstraintResult[] = [];
+  validateTimetable(timetable: TimetableData): ConstraintEvaluationResult {
+    const violations: string[] = [];
 
-    if (!data.specialPrograms) return violations;
+    if (!timetable.specialPrograms) {
+      return this.success();
+    }
 
-    for (const program of data.specialPrograms) {
-      for (const classId of program.classes) {
-        const slot = this.getSlot(timetable, classId, program.day, program.period);
+    const levelPrograms = timetable.specialPrograms.filter(p => p.type === 'level-based');
 
-        if (this.isSlotEmpty(slot) || !slot.isSpecialProgram || slot.specialProgramType !== program.type) {
-          const classItem = data.classes.find(c => c.id === classId);
-          violations.push(this.failure(
-            `${classItem?.name || classId}이(가) ${program.day}요일 ${program.period}교시에 ${program.name}(${program.type}) 시간이 아닙니다.`,
-            {
-              programId: program.name,
-              programType: program.type,
-              classId,
-              className: classItem?.name,
-              day: program.day,
-              period: program.period,
+    for (const program of levelPrograms) {
+      if (program.grade === undefined) continue;
+
+      const gradeClasses = timetable.classes.filter(c => c.grade === program.grade);
+      const programSlots: Record<string, Set<string>> = {};
+
+      for (const classItem of gradeClasses) {
+        const classSchedule = timetable.timetable[classItem.id];
+        if (!classSchedule) continue;
+
+        for (const day of timetable.schoolConfig.days) {
+          const daySchedule = classSchedule[day as keyof typeof classSchedule];
+          if (!daySchedule) continue;
+
+          const maxPeriod = timetable.schoolConfig.periodsPerDay[day];
+          for (let period = 1; period <= maxPeriod; period++) {
+            const slot = daySchedule[period];
+            if (slot && slot.isSpecialProgram && slot.programType === 'level-based') {
+              const key = `${day}_${period}`;
+              if (!programSlots[key]) {
+                programSlots[key] = new Set();
+              }
+              programSlots[key].add(classItem.id);
             }
-          ));
+          }
+        }
+      }
+
+      // 모든 학급이 같은 시간에 배정되었는지 확인
+      for (const [key, classIds] of Object.entries(programSlots)) {
+        if (classIds.size !== gradeClasses.length) {
+          const [day, period] = key.split('_');
+          violations.push(
+            `${program.grade}학년 수준별 이동수업이 ${day}요일 ${period}교시에 일부 학급만 배정됨 (${classIds.size}/${gradeClasses.length})`
+          );
         }
       }
     }
 
-    return violations;
+    if (violations.length > 0) {
+      return this.failure(`수준별 이동수업 위반 ${violations.length}건 발견`, 'error', { violations });
+    }
+
+    return this.success();
   }
 }

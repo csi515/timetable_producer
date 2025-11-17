@@ -1,75 +1,86 @@
 // 제약조건 기본 클래스
 
-import { TimetableSlot, TimetableData, ConstraintResult } from '../types';
+import { Slot, TimetableData, ConstraintEvaluationResult, ConstraintMetadata } from '../types';
 
 export interface IConstraint {
-  /**
-   * 제약조건 ID
-   */
-  id: string;
-
-  /**
-   * 제약조건 이름
-   */
-  name: string;
-
-  /**
-   * 제약조건 타입 (hard/soft)
-   */
-  type: 'hard' | 'soft';
-
-  /**
-   * 제약조건 우선순위 (1-10, 높을수록 중요)
-   */
-  priority: number;
-
-  /**
-   * 슬롯 배치 전 검사
-   */
-  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult;
-
-  /**
-   * 전체 시간표 검증
-   */
-  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[];
+  metadata: ConstraintMetadata;
+  checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult;
+  validateTimetable(timetable: TimetableData): ConstraintEvaluationResult;
+  calculateSoftScore?(timetable: TimetableData): number; // 소프트 제약조건 점수 계산
 }
 
 export abstract class BaseConstraint implements IConstraint {
-  abstract id: string;
-  abstract name: string;
-  abstract type: 'hard' | 'soft';
-  abstract priority: number;
+  abstract metadata: ConstraintMetadata;
 
-  abstract checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult;
-  abstract validateTimetable(data: TimetableData, timetable: any): ConstraintResult[];
+  abstract checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult;
 
-  protected success(): ConstraintResult {
-    return {
-      satisfied: true,
-      severity: this.type,
-      message: '',
-    };
+  abstract validateTimetable(timetable: TimetableData): ConstraintEvaluationResult;
+
+  calculateSoftScore?(timetable: TimetableData): number {
+    return 0;
   }
 
-  protected failure(message: string, details?: Record<string, any>, penalty?: number): ConstraintResult {
-    return {
-      satisfied: false,
-      severity: this.type,
-      message,
-      details,
-      penalty: penalty || (this.type === 'soft' ? 1 : 0),
-    };
+  protected isEmptySlot(slot: Slot): boolean {
+    return !slot.subjectId || !slot.teacherId;
   }
 
-  protected getSlot(timetable: any, classId: string, day: string, period: number): TimetableSlot | null {
-    const classSchedule = timetable[classId];
+  protected getSlot(timetable: TimetableData, classId: string, day: string, period: number): Slot | null {
+    const classSchedule = timetable.timetable[classId];
     if (!classSchedule) return null;
-    const daySchedule = classSchedule[day];
+
+    const daySchedule = classSchedule[day as keyof typeof classSchedule];
     if (!daySchedule) return null;
+
     return daySchedule[period] || null;
   }
 
-  protected isSlotEmpty(slot: TimetableSlot | null): boolean {
-    return !slot || !slot.subjectId || !slot.teacherId;
+  protected isTeacherAssignedAt(
+    timetable: TimetableData,
+    teacherId: string,
+    day: string,
+    period: number,
+    excludeClassId?: string
+  ): boolean {
+    for (const classId of Object.keys(timetable.timetable)) {
+      if (excludeClassId && classId === excludeClassId) continue;
+
+      const slot = this.getSlot(timetable, classId, day, period);
+      if (slot && slot.teacherId === teacherId) {
+        return true;
+      }
+      // 공동수업 교사도 확인
+      if (slot && slot.coTeachers && slot.coTeachers.includes(teacherId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  protected isClassOccupiedAt(timetable: TimetableData, classId: string, day: string, period: number): boolean {
+    const slot = this.getSlot(timetable, classId, day, period);
+    return slot !== null && !this.isEmptySlot(slot);
+  }
+
+  protected success(score?: number): ConstraintEvaluationResult {
+    return {
+      satisfied: true,
+      violatedConstraints: [],
+      severity: 'error',
+      score,
+    };
+  }
+
+  protected failure(
+    reason: string,
+    severity: 'error' | 'warning' = 'error',
+    details?: Record<string, any>
+  ): ConstraintEvaluationResult {
+    return {
+      satisfied: false,
+      reason,
+      violatedConstraints: [this.metadata.id],
+      severity,
+      details,
+    };
   }
 }
