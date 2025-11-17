@@ -10,36 +10,38 @@ export interface TimeSlot {
 export interface SchoolConfig {
   days: Day[];
   periodsPerDay: Record<Day, number>;
-  lunchPeriod: number; // 점심 시간 전 교시 (예: 4)
+  lunchPeriod: number; // 점심 시간 전 교시 (예: 4교시까지)
   gradeCommonPeriods?: Array<{
     grade: number;
     day: Day;
     period: number;
-    activity: string; // 창의적 체험활동, 학년행사 등
+    activity: string; // '창체', '학년행사' 등
   }>;
 }
 
 export interface Class {
   id: string;
-  name: string; // 예: "1학년 1반"
+  name: string; // "1학년 1반"
   grade: number;
   classNumber: number;
+  level?: string; // 수준별 이동수업용: 'A', 'B', 'C' 등
 }
 
 export interface Subject {
   id: string;
   name: string;
   weeklyHours: number; // 주당 시수
-  requiresConsecutive?: boolean; // 연강 필요 (예: 체육 1,2교시)
-  maxPerDay?: number; // 하루 최대 배정 횟수 (기본 1)
+  grade: number; // 학년
+  requiresConsecutive?: boolean; // 연강 필요 여부
+  consecutiveHours?: number; // 연강 시 연속 교시 수 (기본 2)
+  requiresSpecialRoom?: boolean;
+  specialRoomType?: string; // '실험실', '컴퓨터실', '음악실' 등
   fixedTime?: TimeSlot; // 고정 시간대
-  preferredPeriods?: number[]; // 선호 교시 (예: 수학은 1,2교시)
+  preferredPeriods?: number[]; // 선호 교시 (예: [1, 2] - 오전 우선)
   avoidPeriods?: number[]; // 피해야 할 교시
-  facilityType?: string; // 특수 교실 타입 (실험실, 컴퓨터실 등)
-  requiresCoTeaching?: boolean; // 코티칭 필요
-  coTeachers?: string[]; // 공동 수업 교사 ID 목록
-  levelBased?: boolean; // 수준별 이동수업 여부
-  levelGroup?: string; // 수준별 그룹 ID
+  maxPerDay?: number; // 하루 최대 배정 횟수 (기본 1)
+  difficulty?: 'high' | 'medium' | 'low'; // 난이도 (학생 피로도 고려)
+  isLevelBased?: boolean; // 수준별 이동수업 여부
 }
 
 export interface Teacher {
@@ -51,54 +53,67 @@ export interface Teacher {
   unavailableSlots: TimeSlot[]; // 금지 시간대
   maxConsecutivePeriods?: number; // 최대 연속 교시 (기본 3)
   maxBeforeLunch?: number; // 점심 전 최대 수업 수 (기본 2)
-  coTeachingSubjects?: string[]; // 코티칭 과목 ID 목록
+  isCoTeacher?: boolean; // 공동수업 가능 여부
+  coTeachingSubjects?: string[]; // 공동수업 가능 과목
 }
 
 export interface Facility {
   id: string;
   name: string;
-  type: string; // 'laboratory' | 'computer' | 'music' | 'gym' | 'auditorium' | 'classroom'
-  floor?: number; // 층수
+  type: 'regular' | 'lab' | 'computer' | 'music' | 'gym' | 'auditorium';
   capacity?: number; // 수용 인원
-  exclusive: boolean; // 동시 사용 불가 여부
+  floor?: number; // 층수 (이동 거리 계산용)
+  building?: string; // 건물명
+}
+
+export interface CoTeaching {
+  id: string;
+  subjectId: string;
+  mainTeacherId: string;
+  coTeacherIds: string[];
+  requiredRoom?: string; // 필요한 교실 ID
+  classes: string[]; // 대상 학급 ID 목록
+}
+
+export interface LevelBasedClass {
+  id: string;
+  grade: number;
+  level: string; // 'A', 'B', 'C' 등
+  subjectId: string;
+  teacherId: string;
+  sourceClasses: string[]; // 원본 학급들
+  period: TimeSlot;
 }
 
 export interface SpecialProgram {
-  id: string;
-  type: 'creative' | 'club' | 'co-teaching' | 'level-based';
+  type: 'creative' | 'club' | 'assembly'; // 창체, 동아리, 집회
   name: string;
   grade?: number; // 학년 (전교면 undefined)
   day: Day;
   period: number;
-  classes?: string[]; // 참여 학급 ID 목록
-  teachers?: string[]; // 담당 교사 ID 목록
-  facilityId?: string; // 사용 교실
+  classes: string[]; // 참여 학급
+  teachers?: string[]; // 담당 교사 (선택)
+  requiredRoom?: string;
 }
 
-export interface Assignment {
+export interface TimetableSlot {
   classId: string;
-  subjectId: string;
-  teacherId: string | string[]; // 단일 교사 또는 코티칭 교사들
   day: Day;
   period: number;
-  facilityId?: string;
+  subjectId: string | null;
+  teacherId: string | null;
+  facilityId?: string | null;
   isCoTeaching?: boolean;
+  coTeacherIds?: string[];
   isLevelBased?: boolean;
-  levelGroup?: string;
+  isSpecialProgram?: boolean;
+  specialProgramType?: string;
 }
 
 export interface Timetable {
   [classId: string]: {
     [day in Day]: {
-      [period: number]: Assignment | null;
-    };
-  };
-}
-
-export interface TeacherTimetable {
-  [teacherId: string]: {
-    [day in Day]: {
-      [period: number]: Assignment | null;
+      [period: number]: TimetableSlot;
     };
   };
 }
@@ -109,9 +124,9 @@ export interface TimetableData {
   subjects: Subject[];
   teachers: Teacher[];
   facilities: Facility[];
-  specialPrograms: SpecialProgram[];
-  timetable: Timetable;
-  teacherTimetable: TeacherTimetable;
+  coTeachings?: CoTeaching[];
+  levelBasedClasses?: LevelBasedClass[];
+  specialPrograms?: SpecialProgram[];
 }
 
 // 제약조건 평가 결과
@@ -120,51 +135,38 @@ export interface ConstraintResult {
   severity: 'hard' | 'soft';
   message: string;
   details?: Record<string, any>;
+  penalty?: number; // 소프트 제약조건 위반 시 페널티 점수
+}
+
+// 알고리즘 상태
+export interface SchedulerState {
+  timetable: Timetable;
+  assignments: TimetableSlot[];
+  unassigned: Array<{
+    classId: string;
+    subjectId: string;
+    requiredHours: number;
+  }>;
+  domains: Map<string, TimeSlot[]>; // 변수별 가능한 시간대
+  iteration: number;
+  backtrackCount: number;
+  violations: ConstraintResult[];
+  score: number; // 현재 해의 점수
 }
 
 // 생성 결과
 export interface GenerationResult {
   success: boolean;
-  timetable: Timetable;
-  teacherTimetable: TeacherTimetable;
-  violations: Array<{
-    type: 'hard' | 'soft';
-    constraint: string;
-    message: string;
-    details?: any;
-  }>;
+  timetable: Timetable | null;
+  teacherTimetables: Record<string, Timetable>;
+  violations: ConstraintResult[];
   statistics: {
-    totalAssignments: number;
+    totalIterations: number;
+    totalBacktracks: number;
+    generationTime: number;
     hardViolations: number;
     softViolations: number;
-    generationTime: number;
-    iterations: number;
-    backtracks: number;
+    finalScore: number;
   };
-  heuristics: {
-    variableSelection: string;
-    valueOrdering: string;
-    strategies: string[];
-  };
-}
-
-// 제약조건 위반 리포트
-export interface ViolationReport {
-  hardViolations: Array<{
-    constraint: string;
-    message: string;
-    assignments: Assignment[];
-    details: any;
-  }>;
-  softViolations: Array<{
-    constraint: string;
-    message: string;
-    score: number;
-    details: any;
-  }>;
-  summary: {
-    totalHardViolations: number;
-    totalSoftViolations: number;
-    isFeasible: boolean;
-  };
+  logs: string[];
 }

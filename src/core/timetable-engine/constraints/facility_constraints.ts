@@ -1,138 +1,223 @@
 // 시설/공간 관련 제약조건
 
-import { Assignment, TimetableData, ConstraintResult, Timetable } from '../types';
+import { BaseConstraint } from './BaseConstraint';
+import { TimetableSlot, TimetableData, ConstraintResult } from '../types';
 
-export class FacilityConstraints {
-  /**
-   * 하드 제약: 특수 교실은 동시에 두 반 이상 사용 불가
-   */
-  static checkExclusiveFacility(
-    assignment: Assignment,
-    timetable: Timetable,
-    data: TimetableData
-  ): ConstraintResult {
-    if (!assignment.facilityId) {
-      return { satisfied: true, severity: 'hard', message: '' };
+/**
+ * 특수 교실 중복 사용 금지 (Hard)
+ */
+export class FacilityConflictConstraint extends BaseConstraint {
+  id = 'facility_conflict';
+  name = '특수 교실 중복 사용 금지';
+  type = 'hard' as const;
+  priority = 9;
+
+  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult {
+    if (!slot.subjectId || !slot.facilityId) return this.success();
+
+    const subject = data.subjects.find(s => s.id === slot.subjectId);
+    const facility = data.facilities.find(f => f.id === slot.facilityId);
+
+    if (!subject?.requiresSpecialRoom || !facility) return this.success();
+
+    // 같은 특수 교실을 같은 시간에 사용하는 다른 반이 있는지 확인
+    const conflictingClass = this.findConflictingClass(
+      timetable,
+      slot.facilityId,
+      slot.day,
+      slot.period,
+      slot.classId
+    );
+
+    if (conflictingClass) {
+      return this.failure(
+        `${facility.name}이(가) ${slot.day}요일 ${slot.period}교시에 이미 ${conflictingClass}에서 사용 중입니다.`,
+        {
+          facilityId: slot.facilityId,
+          facilityName: facility.name,
+          facilityType: facility.type,
+          day: slot.day,
+          period: slot.period,
+          conflictingClass,
+          subjectId: slot.subjectId,
+          subjectName: subject.name,
+        }
+      );
     }
 
-    const facility = data.facilities.find(f => f.id === assignment.facilityId);
-    if (!facility || !facility.exclusive) {
-      return { satisfied: true, severity: 'hard', message: '' };
-    }
-
-    // 같은 교실을 같은 시간에 사용하는 다른 반 확인
-    for (const classId of Object.keys(timetable)) {
-      if (classId === assignment.classId) continue;
-
-      const classSchedule = timetable[classId];
-      if (!classSchedule) continue;
-
-      const daySchedule = classSchedule[assignment.day];
-      if (!daySchedule) continue;
-
-      const conflictingAssignment = daySchedule[assignment.period];
-      if (conflictingAssignment?.facilityId === assignment.facilityId) {
-        const conflictingClass = data.classes.find(c => c.id === classId);
-        return {
-          satisfied: false,
-          severity: 'hard',
-          message: `${facility.name}이(가) ${assignment.day}요일 ${assignment.period}교시에 이미 ${conflictingClass?.name || classId}에서 사용 중입니다.`,
-          details: {
-            facilityId: facility.id,
-            facilityName: facility.name,
-            conflictingClass: conflictingClass?.name,
-          },
-        };
-      }
-    }
-
-    return { satisfied: true, severity: 'hard', message: '' };
+    return this.success();
   }
 
-  /**
-   * 소프트 제약: 이동수업 시 교실 거리 최소화 (가능하면 동일 층)
-   */
-  static scoreFacilityDistance(
-    assignment: Assignment,
-    timetable: Timetable,
-    data: TimetableData
-  ): number {
-    if (!assignment.facilityId) return 0;
+  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[] {
+    const violations: ConstraintResult[] = [];
+    const facilityUsage: Record<string, Array<{ classId: string; day: string; period: number }>> = {};
 
-    const facility = data.facilities.find(f => f.id === assignment.facilityId);
-    if (!facility || !facility.floor) return 0;
+    // 모든 특수 교실 사용 수집
+    for (const classId of Object.keys(timetable)) {
+      const classSchedule = timetable[classId];
+      for (const day of data.schoolConfig.days) {
+        const daySchedule = classSchedule[day];
+        if (!daySchedule) continue;
 
-    const classItem = data.classes.find(c => c.id === assignment.classId);
-    if (!classItem) return 0;
+        const maxPeriod = data.schoolConfig.periodsPerDay[day];
+        for (let period = 1; period <= maxPeriod; period++) {
+          const slot = daySchedule[period];
+          if (this.isSlotEmpty(slot) || !slot.facilityId) continue;
 
-    // 같은 날 다른 교시에 사용한 교실들의 층수 확인
-    const classSchedule = timetable[assignment.classId];
-    if (!classSchedule) return 0;
-
-    const daySchedule = classSchedule[assignment.day];
-    if (!daySchedule) return 0;
-
-    const usedFloors: number[] = [];
-    const maxPeriod = data.schoolConfig.periodsPerDay[assignment.day];
-    for (let p = 1; p <= maxPeriod; p++) {
-      if (p === assignment.period) continue;
-      
-      const otherAssignment = daySchedule[p];
-      if (otherAssignment?.facilityId) {
-        const otherFacility = data.facilities.find(f => f.id === otherAssignment.facilityId);
-        if (otherFacility?.floor) {
-          usedFloors.push(otherFacility.floor);
+          const key = `${slot.facilityId}_${day}_${period}`;
+          if (!facilityUsage[key]) {
+            facilityUsage[key] = [];
+          }
+          facilityUsage[key].push({ classId, day, period });
         }
       }
     }
 
-    // 다른 층을 사용하면 페널티
-    if (usedFloors.length > 0) {
-      const differentFloors = usedFloors.filter(f => f !== facility.floor);
-      return differentFloors.length * 2; // 층 차이마다 페널티
+    // 중복 확인
+    for (const [key, classes] of Object.entries(facilityUsage)) {
+      if (classes.length > 1) {
+        const [facilityId, day, period] = key.split('_');
+        const facility = data.facilities.find(f => f.id === facilityId);
+        const classNames = classes.map(c => data.classes.find(cl => cl.id === c.classId)?.name || c.classId).join(', ');
+
+        violations.push(this.failure(
+          `${facility?.name || facilityId}이(가) ${day}요일 ${period}교시에 ${classes.length}개 반(${classNames})에서 중복 사용`,
+          {
+            facilityId,
+            facilityName: facility?.name,
+            facilityType: facility?.type,
+            day,
+            period: parseInt(period),
+            conflictingClasses: classes.map(c => c.classId),
+          }
+        ));
+      }
     }
 
-    return 0;
+    return violations;
   }
 
-  /**
-   * 하드 제약: 교실 용량 확인
-   */
-  static checkFacilityCapacity(
-    assignment: Assignment,
-    data: TimetableData
-  ): ConstraintResult {
-    if (!assignment.facilityId) {
-      return { satisfied: true, severity: 'hard', message: '' };
+  private findConflictingClass(
+    timetable: any,
+    facilityId: string,
+    day: string,
+    period: number,
+    excludeClassId: string
+  ): string | null {
+    for (const classId of Object.keys(timetable)) {
+      if (classId === excludeClassId) continue;
+
+      const slot = this.getSlot(timetable, classId, day, period);
+      if (!this.isSlotEmpty(slot) && slot.facilityId === facilityId) {
+        return classId;
+      }
     }
 
-    const facility = data.facilities.find(f => f.id === assignment.facilityId);
-    if (!facility || !facility.capacity) {
-      return { satisfied: true, severity: 'hard', message: '' };
-    }
+    return null;
+  }
+}
 
-    const classItem = data.classes.find(c => c.id === assignment.classId);
-    if (!classItem) {
-      return { satisfied: true, severity: 'hard', message: '' };
-    }
+/**
+ * 이동 거리 최소화 (Soft)
+ */
+export class FacilityDistanceConstraint extends BaseConstraint {
+  id = 'facility_distance';
+  name = '교실 이동 거리 최소화';
+  type = 'soft' as const;
+  priority = 3;
 
-    // 학급 인원수는 데이터에 없으므로 기본값 사용 (실제로는 데이터에 포함되어야 함)
-    const estimatedClassSize = 30; // 기본값
+  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult {
+    if (!slot.facilityId) return this.success();
 
-    if (estimatedClassSize > facility.capacity) {
-      return {
-        satisfied: false,
-        severity: 'hard',
-        message: `${facility.name}의 수용 인원(${facility.capacity}명)이 부족합니다.`,
-        details: {
-          facilityId: facility.id,
+    const facility = data.facilities.find(f => f.id === slot.facilityId);
+    if (!facility || facility.type === 'regular') return this.success();
+
+    // 이전 교시의 교실 확인
+    const prevSlot = this.getSlot(timetable, slot.classId, slot.day, slot.period - 1);
+    if (this.isSlotEmpty(prevSlot) || !prevSlot.facilityId) return this.success();
+
+    const prevFacility = data.facilities.find(f => f.id === prevSlot.facilityId);
+    if (!prevFacility) return this.success();
+
+    // 같은 층/건물인지 확인
+    const distance = this.calculateDistance(facility, prevFacility);
+    if (distance > 0) {
+      return this.failure(
+        `${facility.name}과 이전 교시 교실(${prevFacility.name}) 간 이동 거리가 있습니다.`,
+        {
+          facilityId: slot.facilityId,
           facilityName: facility.name,
-          capacity: facility.capacity,
-          estimatedSize: estimatedClassSize,
+          prevFacilityId: prevSlot.facilityId,
+          prevFacilityName: prevFacility.name,
+          distance,
         },
-      };
+        distance * 2 // 페널티: 거리 * 2
+      );
     }
 
-    return { satisfied: true, severity: 'hard', message: '' };
+    return this.success();
+  }
+
+  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[] {
+    const violations: ConstraintResult[] = [];
+    let totalDistance = 0;
+
+    for (const classId of Object.keys(timetable)) {
+      const classSchedule = timetable[classId];
+      for (const day of data.schoolConfig.days) {
+        const daySchedule = classSchedule[day];
+        if (!daySchedule) continue;
+
+        const maxPeriod = data.schoolConfig.periodsPerDay[day];
+        for (let period = 2; period <= maxPeriod; period++) {
+          const currentSlot = daySchedule[period];
+          const prevSlot = daySchedule[period - 1];
+
+          if (this.isSlotEmpty(currentSlot) || this.isSlotEmpty(prevSlot)) continue;
+          if (!currentSlot.facilityId || !prevSlot.facilityId) continue;
+
+          const currentFacility = data.facilities.find(f => f.id === currentSlot.facilityId);
+          const prevFacility = data.facilities.find(f => f.id === prevSlot.facilityId);
+
+          if (!currentFacility || !prevFacility) continue;
+
+          const distance = this.calculateDistance(currentFacility, prevFacility);
+          if (distance > 0) {
+            totalDistance += distance;
+            const classItem = data.classes.find(c => c.id === classId);
+            violations.push(this.failure(
+              `${classItem?.name || classId}이(가) ${day}요일 ${period - 1}-${period}교시에 ${prevFacility.name} → ${currentFacility.name} 이동 (거리: ${distance})`,
+              {
+                classId,
+                className: classItem?.name,
+                day,
+                period,
+                prevFacility: prevFacility.name,
+                currentFacility: currentFacility.name,
+                distance,
+              },
+              distance
+            ));
+          }
+        }
+      }
+    }
+
+    return violations;
+  }
+
+  private calculateDistance(facility1: any, facility2: any): number {
+    // 같은 건물, 같은 층이면 거리 0
+    if (facility1.building === facility2.building && facility1.floor === facility2.floor) {
+      return 0;
+    }
+
+    // 다른 층이면 층 차이
+    if (facility1.building === facility2.building && facility1.floor !== facility2.floor) {
+      return Math.abs((facility1.floor || 0) - (facility2.floor || 0));
+    }
+
+    // 다른 건물이면 큰 페널티
+    return 5;
   }
 }

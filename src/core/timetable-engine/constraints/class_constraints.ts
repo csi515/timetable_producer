@@ -1,212 +1,283 @@
 // 학급 관련 제약조건
 
-import { Assignment, TimetableData, ConstraintResult, Timetable } from '../types';
+import { BaseConstraint } from './BaseConstraint';
+import { TimetableSlot, TimetableData, ConstraintResult } from '../types';
 
-export class ClassConstraints {
-  /**
-   * 하드 제약: 한 학급은 동일 시간에 1개 수업만 가능
-   */
-  static checkClassNoOverlap(
-    assignment: Assignment,
-    timetable: Timetable,
-    data: TimetableData
-  ): ConstraintResult {
-    const classSchedule = timetable[assignment.classId];
-    if (!classSchedule) {
-      return { satisfied: true, severity: 'hard', message: '' };
+/**
+ * 학급 동시간대 중복 수업 금지 (Hard)
+ */
+export class ClassNoOverlapConstraint extends BaseConstraint {
+  id = 'class_no_overlap';
+  name = '학급 동시간대 중복 수업 금지';
+  type = 'hard' as const;
+  priority = 10;
+
+  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult {
+    if (!slot.subjectId || !slot.teacherId) return this.success();
+
+    // 같은 반이 같은 시간에 이미 수업이 있는지 확인
+    const existingSlot = this.getSlot(timetable, slot.classId, slot.day, slot.period);
+
+    if (!this.isSlotEmpty(existingSlot)) {
+      const existingSubject = data.subjects.find(s => s.id === existingSlot!.subjectId);
+      const newSubject = data.subjects.find(s => s.id === slot.subjectId);
+      const classItem = data.classes.find(c => c.id === slot.classId);
+
+      return this.failure(
+        `${classItem?.name || slot.classId}이(가) ${slot.day}요일 ${slot.period}교시에 이미 ${existingSubject?.name || existingSlot!.subjectId} 수업이 있습니다.`,
+        {
+          classId: slot.classId,
+          className: classItem?.name,
+          day: slot.day,
+          period: slot.period,
+          existingSubjectId: existingSlot!.subjectId,
+          existingSubjectName: existingSubject?.name,
+          newSubjectId: slot.subjectId,
+          newSubjectName: newSubject?.name,
+        }
+      );
     }
 
-    const daySchedule = classSchedule[assignment.day];
-    if (!daySchedule) {
-      return { satisfied: true, severity: 'hard', message: '' };
-    }
-
-    const existingAssignment = daySchedule[assignment.period];
-
-    if (existingAssignment) {
-      const classItem = data.classes.find(c => c.id === assignment.classId);
-      const existingSubject = data.subjects.find(s => s.id === existingAssignment.subjectId);
-      const newSubject = data.subjects.find(s => s.id === assignment.subjectId);
-
-      return {
-        satisfied: false,
-        severity: 'hard',
-        message: `${classItem?.name || assignment.classId}이(가) ${assignment.day}요일 ${assignment.period}교시에 이미 ${existingSubject?.name || existingAssignment.subjectId} 수업이 있습니다.`,
-        details: {
-          classId: assignment.classId,
-          existingSubject: existingSubject?.name,
-          newSubject: newSubject?.name,
-        },
-      };
-    }
-
-    return { satisfied: true, severity: 'hard', message: '' };
+    return this.success();
   }
 
-  /**
-   * 하드 제약: 학년별 공통 시간대 확인
-   */
-  static checkGradeCommonPeriod(
-    assignment: Assignment,
-    data: TimetableData
-  ): ConstraintResult {
-    const classItem = data.classes.find(c => c.id === assignment.classId);
-    if (!classItem) {
-      return { satisfied: true, severity: 'hard', message: '' };
-    }
+  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[] {
+    // checkBeforePlacement에서 이미 방지되므로 여기서는 빈 배열 반환
+    return [];
+  }
+}
 
-    const commonPeriods = data.schoolConfig.gradeCommonPeriods || [];
-    const matchingPeriod = commonPeriods.find(
-      cp => cp.grade === classItem.grade &&
-            cp.day === assignment.day &&
-            cp.period === assignment.period
+/**
+ * 학년별 공통 시간대 강제 (Hard)
+ */
+export class GradeCommonPeriodConstraint extends BaseConstraint {
+  id = 'grade_common_period';
+  name = '학년별 공통 시간대';
+  type = 'hard' as const;
+  priority = 9;
+
+  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult {
+    if (!data.schoolConfig.gradeCommonPeriods) return this.success();
+
+    const classItem = data.classes.find(c => c.id === slot.classId);
+    if (!classItem) return this.success();
+
+    // 해당 학년의 공통 시간대 확인
+    const commonPeriods = data.schoolConfig.gradeCommonPeriods.filter(
+      cp => cp.grade === classItem.grade && cp.day === slot.day && cp.period === slot.period
     );
 
-    if (matchingPeriod) {
-      // 공통 시간대에는 특정 활동만 가능
-      const subject = data.subjects.find(s => s.id === assignment.subjectId);
-      const isAllowed = subject?.name === matchingPeriod.activity ||
-                       assignment.subjectId === matchingPeriod.activity;
-
-      if (!isAllowed) {
-        return {
-          satisfied: false,
-          severity: 'hard',
-          message: `${classItem.grade}학년 공통 시간대(${assignment.day}요일 ${assignment.period}교시)에는 ${matchingPeriod.activity}만 배정 가능합니다.`,
-          details: {
+    if (commonPeriods.length > 0) {
+      const commonPeriod = commonPeriods[0];
+      // 공통 시간대인데 일반 수업을 배정하려는 경우
+      if (!slot.isSpecialProgram) {
+        return this.failure(
+          `${classItem.grade}학년은 ${slot.day}요일 ${slot.period}교시에 ${commonPeriod.activity} 시간입니다.`,
+          {
+            classId: slot.classId,
+            className: classItem.name,
             grade: classItem.grade,
-            activity: matchingPeriod.activity,
-            attemptedSubject: subject?.name,
-          },
-        };
+            day: slot.day,
+            period: slot.period,
+            requiredActivity: commonPeriod.activity,
+          }
+        );
       }
     }
 
-    return { satisfied: true, severity: 'hard', message: '' };
+    return this.success();
   }
 
-  /**
-   * 하드 제약: 특정 과목은 반드시 특정 요일/시간에만 편성
-   */
-  static checkFixedTime(
-    assignment: Assignment,
-    data: TimetableData
-  ): ConstraintResult {
-    const subject = data.subjects.find(s => s.id === assignment.subjectId);
-    if (!subject?.fixedTime) {
-      return { satisfied: true, severity: 'hard', message: '' };
-    }
+  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[] {
+    const violations: ConstraintResult[] = [];
 
-    const fixedTime = subject.fixedTime;
-    if (fixedTime.day !== assignment.day || fixedTime.period !== assignment.period) {
-      return {
-        satisfied: false,
-        severity: 'hard',
-        message: `${subject.name} 과목은 ${fixedTime.day}요일 ${fixedTime.period}교시에만 배정 가능합니다.`,
-        details: {
-          subjectId: subject.id,
-          subjectName: subject.name,
-          requiredTime: fixedTime,
-          attemptedTime: { day: assignment.day, period: assignment.period },
-        },
-      };
-    }
+    if (!data.schoolConfig.gradeCommonPeriods) return violations;
 
-    return { satisfied: true, severity: 'hard', message: '' };
-  }
+    for (const commonPeriod of data.schoolConfig.gradeCommonPeriods) {
+      const gradeClasses = data.classes.filter(c => c.grade === commonPeriod.grade);
 
-  /**
-   * 하드 제약: 특정 과목은 중복 배치 금지 (예: 체육 1,2교시 연강 불가)
-   */
-  static checkNoConsecutiveForSubject(
-    assignment: Assignment,
-    timetable: Timetable,
-    data: TimetableData
-  ): ConstraintResult {
-    const subject = data.subjects.find(s => s.id === assignment.subjectId);
-    
-    // 연강이 필요한 과목은 제외
-    if (subject?.requiresConsecutive) {
-      return { satisfied: true, severity: 'hard', message: '' };
-    }
+      for (const classItem of gradeClasses) {
+        const slot = this.getSlot(timetable, classItem.id, commonPeriod.day, commonPeriod.period);
 
-    const classSchedule = timetable[assignment.classId];
-    if (!classSchedule) {
-      return { satisfied: true, severity: 'hard', message: '' };
-    }
-
-    const daySchedule = classSchedule[assignment.day];
-    if (!daySchedule) {
-      return { satisfied: true, severity: 'hard', message: '' };
-    }
-
-    // 인접 교시에 같은 과목이 있는지 확인
-    const prevPeriod = daySchedule[assignment.period - 1];
-    const nextPeriod = daySchedule[assignment.period + 1];
-
-    if (prevPeriod?.subjectId === assignment.subjectId) {
-      return {
-        satisfied: false,
-        severity: 'hard',
-        message: `${subject?.name || assignment.subjectId} 과목은 연속 배치할 수 없습니다. (${assignment.period - 1}교시에 이미 배정됨)`,
-        details: {
-          subjectId: assignment.subjectId,
-          conflictingPeriod: assignment.period - 1,
-        },
-      };
-    }
-
-    if (nextPeriod?.subjectId === assignment.subjectId) {
-      return {
-        satisfied: false,
-        severity: 'hard',
-        message: `${subject?.name || assignment.subjectId} 과목은 연속 배치할 수 없습니다. (${assignment.period + 1}교시에 이미 배정됨)`,
-        details: {
-          subjectId: assignment.subjectId,
-          conflictingPeriod: assignment.period + 1,
-        },
-      };
-    }
-
-    return { satisfied: true, severity: 'hard', message: '' };
-  }
-
-  /**
-   * 소프트 제약: 과목 간 균형 배치 (월~금 고르게)
-   */
-  static scoreEvenDistribution(
-    assignment: Assignment,
-    timetable: Timetable,
-    data: TimetableData
-  ): number {
-    const classSchedule = timetable[assignment.classId];
-    if (!classSchedule) return 0;
-
-    // 각 요일별 해당 과목 배정 횟수 계산
-    const dayCounts: Record<string, number> = {};
-    for (const day of data.schoolConfig.days) {
-      dayCounts[day] = 0;
-      const daySchedule = classSchedule[day];
-      if (!daySchedule) continue;
-
-      const maxPeriod = data.schoolConfig.periodsPerDay[day];
-      for (let p = 1; p <= maxPeriod; p++) {
-        if (daySchedule[p]?.subjectId === assignment.subjectId) {
-          dayCounts[day]++;
+        if (this.isSlotEmpty(slot) || !slot.isSpecialProgram) {
+          violations.push(this.failure(
+            `${classItem.name}이(가) ${commonPeriod.day}요일 ${commonPeriod.period}교시에 ${commonPeriod.activity} 시간이 아닙니다.`,
+            {
+              classId: classItem.id,
+              className: classItem.name,
+              grade: classItem.grade,
+              day: commonPeriod.day,
+              period: commonPeriod.period,
+              requiredActivity: commonPeriod.activity,
+            }
+          ));
         }
       }
     }
 
-    // 현재 배정 추가
-    dayCounts[assignment.day]++;
+    return violations;
+  }
+}
 
-    // 분포의 표준편차 계산
-    const counts = Object.values(dayCounts);
-    const mean = counts.reduce((a, b) => a + b, 0) / counts.length;
-    const variance = counts.reduce((sum, count) => sum + Math.pow(count - mean, 2), 0) / counts.length;
-    const stdDev = Math.sqrt(variance);
+/**
+ * 특정 과목 고정 시간대 (Hard)
+ */
+export class SubjectFixedTimeConstraint extends BaseConstraint {
+  id = 'subject_fixed_time';
+  name = '과목 고정 시간대';
+  type = 'hard' as const;
+  priority = 9;
 
-    // 표준편차가 크면 페널티
-    return stdDev * 3;
+  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult {
+    if (!slot.subjectId) return this.success();
+
+    const subject = data.subjects.find(s => s.id === slot.subjectId);
+    if (!subject?.fixedTime) return this.success();
+
+    // 고정 시간대와 일치하는지 확인
+    if (subject.fixedTime.day !== slot.day || subject.fixedTime.period !== slot.period) {
+      const classItem = data.classes.find(c => c.id === slot.classId);
+      return this.failure(
+        `${subject.name} 과목은 반드시 ${subject.fixedTime.day}요일 ${subject.fixedTime.period}교시에 배정되어야 합니다.`,
+        {
+          subjectId: subject.id,
+          subjectName: subject.name,
+          classId: slot.classId,
+          className: classItem?.name,
+          currentDay: slot.day,
+          currentPeriod: slot.period,
+          requiredDay: subject.fixedTime.day,
+          requiredPeriod: subject.fixedTime.period,
+        }
+      );
+    }
+
+    return this.success();
+  }
+
+  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[] {
+    const violations: ConstraintResult[] = [];
+
+    for (const subject of data.subjects) {
+      if (!subject.fixedTime) continue;
+
+      const gradeClasses = data.classes.filter(c => c.grade === subject.grade);
+
+      for (const classItem of gradeClasses) {
+        const slot = this.getSlot(timetable, classItem.id, subject.fixedTime.day, subject.fixedTime.period);
+
+        if (this.isSlotEmpty(slot) || slot.subjectId !== subject.id) {
+          violations.push(this.failure(
+            `${classItem.name}의 ${subject.name} 과목이 고정 시간대(${subject.fixedTime.day}요일 ${subject.fixedTime.period}교시)에 배정되지 않았습니다.`,
+            {
+              subjectId: subject.id,
+              subjectName: subject.name,
+              classId: classItem.id,
+              className: classItem.name,
+              requiredDay: subject.fixedTime.day,
+              requiredPeriod: subject.fixedTime.period,
+            }
+          ));
+        }
+      }
+    }
+
+    return violations;
+  }
+}
+
+/**
+ * 특정 과목 중복 배치 금지 (Hard) - 예: 체육 1,2교시 연강 불가
+ */
+export class SubjectNoDuplicateConstraint extends BaseConstraint {
+  id = 'subject_no_duplicate';
+  name = '과목 중복 배치 금지';
+  type = 'hard' as const;
+  priority = 8;
+
+  checkBeforePlacement(slot: TimetableSlot, data: TimetableData, timetable: any): ConstraintResult {
+    if (!slot.subjectId) return this.success();
+
+    const subject = data.subjects.find(s => s.id === slot.subjectId);
+    if (!subject) return this.success();
+
+    // 같은 반에서 같은 날에 이미 배정된 횟수 확인
+    const dailyCount = this.countDailyLessons(timetable, slot.classId, slot.subjectId, slot.day);
+
+    const maxPerDay = subject.maxPerDay || 1;
+    if (dailyCount >= maxPerDay) {
+      const classItem = data.classes.find(c => c.id === slot.classId);
+      return this.failure(
+        `${classItem?.name || slot.classId}의 ${subject.name} 과목이 ${slot.day}요일에 이미 ${dailyCount}회 배정되었습니다. (최대 ${maxPerDay}회)`,
+        {
+          subjectId: subject.id,
+          subjectName: subject.name,
+          classId: slot.classId,
+          className: classItem?.name,
+          day: slot.day,
+          currentCount: dailyCount,
+          maxCount: maxPerDay,
+        }
+      );
+    }
+
+    return this.success();
+  }
+
+  validateTimetable(data: TimetableData, timetable: any): ConstraintResult[] {
+    const violations: ConstraintResult[] = [];
+
+    for (const classItem of data.classes) {
+      const classSchedule = timetable[classItem.id];
+      if (!classSchedule) continue;
+
+      for (const subject of data.subjects) {
+        const maxPerDay = subject.maxPerDay || 1;
+
+        for (const day of data.schoolConfig.days) {
+          const daySchedule = classSchedule[day];
+          if (!daySchedule) continue;
+
+          const dailyCount = this.countDailyLessons(timetable, classItem.id, subject.id, day);
+
+          if (dailyCount > maxPerDay) {
+            violations.push(this.failure(
+              `${classItem.name}의 ${subject.name} 과목이 ${day}요일에 ${dailyCount}회 배정됨 (최대 ${maxPerDay}회)`,
+              {
+                subjectId: subject.id,
+                subjectName: subject.name,
+                classId: classItem.id,
+                className: classItem.name,
+                day,
+                currentCount: dailyCount,
+                maxCount: maxPerDay,
+              }
+            ));
+          }
+        }
+      }
+    }
+
+    return violations;
+  }
+
+  private countDailyLessons(timetable: any, classId: string, subjectId: string, day: string): number {
+    const classSchedule = timetable[classId];
+    if (!classSchedule) return 0;
+
+    const daySchedule = classSchedule[day];
+    if (!daySchedule) return 0;
+
+    let count = 0;
+    const maxPeriod = 10; // 최대 교시 수
+
+    for (let period = 1; period <= maxPeriod; period++) {
+      const slot = daySchedule[period];
+      if (!this.isSlotEmpty(slot) && slot.subjectId === subjectId) {
+        count++;
+      }
+    }
+
+    return count;
   }
 }
