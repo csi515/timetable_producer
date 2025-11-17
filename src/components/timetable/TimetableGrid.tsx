@@ -1,6 +1,8 @@
 "use client";
 
 import { TimetableData, Assignment, Day } from "@/types/timetable";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface TimetableGridProps {
   data: TimetableData;
@@ -9,6 +11,22 @@ interface TimetableGridProps {
 }
 
 const DAYS: Day[] = ["월", "화", "수", "목", "금"];
+
+// 과목별 색상 매핑
+const getSubjectColor = (subjectName: string): string => {
+  const colorMap: Record<string, string> = {
+    수학: "bg-blue-500",
+    국어: "bg-red-500",
+    영어: "bg-green-500",
+    과학: "bg-purple-500",
+    사회: "bg-orange-500",
+    체육: "bg-pink-500",
+    음악: "bg-teal-500",
+    미술: "bg-amber-500",
+    컴퓨터: "bg-indigo-500",
+  };
+  return colorMap[subjectName] || "bg-gray-500";
+};
 
 export default function TimetableGrid({
   data,
@@ -42,84 +60,97 @@ export default function TimetableGrid({
   );
 
   return (
-    <div className="overflow-x-auto" data-class-id={classId}>
-      <h3 className="text-2xl font-bold mb-4">{classItem.name} 시간표</h3>
-      <table className="w-full border-collapse bg-white rounded-xl overflow-hidden shadow-lg">
-        <thead>
-          <tr className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
-            <th className="px-6 py-4 text-left font-semibold">교시</th>
-            {DAYS.filter((day) =>
-              data.schoolSchedule.days.includes(day)
-            ).map((day) => (
-              <th
-                key={day}
-                className="px-6 py-4 text-center font-semibold border-l border-blue-500"
-              >
-                {day}요일
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {Array.from({ length: maxPeriods }, (_, i) => i + 1).map(
-            (period) => (
-              <tr
-                key={period}
-                className="border-b border-gray-200 hover:bg-gray-50"
-              >
-                <td className="px-6 py-4 text-center font-semibold bg-gray-50">
-                  {period}
-                </td>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-2xl font-bold text-gray-900">
+          {classItem.name} 시간표
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-gradient-to-r from-primary-600 to-primary-700 hover:bg-primary-700">
+                <TableHead className="text-white font-semibold text-center w-20">
+                  교시
+                </TableHead>
                 {DAYS.filter((day) =>
                   data.schoolSchedule.days.includes(day)
-                ).map((day) => {
-                  const assignment = grid[day][period];
-                  const subject = assignment
-                    ? data.subjects.find((s) => s.id === assignment.subjectId)
-                    : null;
-                  const teacher = assignment
-                    ? data.teachers.find((t) => t.id === assignment.teacherId)
-                    : null;
+                ).map((day) => (
+                  <TableHead
+                    key={day}
+                    className="text-white font-semibold text-center border-l border-primary-500 min-w-[150px]"
+                  >
+                    {day}요일
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: maxPeriods }, (_, i) => i + 1).map(
+                (period) => (
+                  <TableRow
+                    key={period}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
+                    <TableCell className="text-center font-semibold bg-gray-50 text-gray-700 border-r">
+                      {period}
+                    </TableCell>
+                    {DAYS.filter((day) =>
+                      data.schoolSchedule.days.includes(day)
+                    ).map((day) => {
+                      const assignment = grid[day][period];
+                      const subject = assignment
+                        ? data.subjects.find((s) => s.id === assignment.subjectId)
+                        : null;
+                      const teacher = assignment
+                        ? data.teachers.find((t) => t.id === assignment.teacherId)
+                        : null;
 
-                  // 교시 수 확인
-                  const maxPeriodForDay =
-                    data.schoolSchedule.periodsPerDay[day];
-                  const isEmpty = period > maxPeriodForDay;
+                      const maxPeriodForDay =
+                        data.schoolSchedule.periodsPerDay[day];
+                      const isEmpty = period > maxPeriodForDay;
 
-                  return (
-                    <td
-                      key={day}
-                      className={`px-4 py-4 text-center border-l border-gray-200 ${
-                        isEmpty ? "bg-gray-100" : ""
-                      }`}
-                    >
-                      {assignment && subject && teacher ? (
-                        <div className="space-y-1">
-                          <div className="font-semibold text-gray-800">
-                            {subject.name}
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            {teacher.name}
-                          </div>
-                          {subject.requiresConsecutive && (
-                            <div className="text-xs text-blue-600">
-                              연강
+                      return (
+                        <TableCell
+                          key={day}
+                          className={`text-center border-l ${
+                            isEmpty ? "bg-gray-100" : ""
+                          }`}
+                        >
+                          {assignment && subject && teacher ? (
+                            <div
+                              className={`
+                                ${getSubjectColor(subject.name)} text-white rounded-lg p-3 shadow-md hover:shadow-lg transition-all
+                              `}
+                            >
+                              <div className="font-semibold text-base mb-1">
+                                {subject.name}
+                              </div>
+                              <div className="text-xs opacity-90">
+                                {teacher.name}
+                              </div>
+                              {subject.requiresConsecutive && (
+                                <div className="text-xs mt-1 bg-white bg-opacity-20 rounded px-2 py-0.5 inline-block">
+                                  연강
+                                </div>
+                              )}
                             </div>
+                          ) : isEmpty ? (
+                            <span className="text-gray-400">-</span>
+                          ) : (
+                            <span className="text-gray-300">빈 시간</span>
                           )}
-                        </div>
-                      ) : isEmpty ? (
-                        <span className="text-gray-400">-</span>
-                      ) : (
-                        <span className="text-gray-300">빈 시간</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            )
-          )}
-        </tbody>
-      </table>
-    </div>
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                )
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

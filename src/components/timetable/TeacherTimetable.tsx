@@ -1,6 +1,8 @@
 "use client";
 
 import { TimetableData, Assignment, Day } from "@/types/timetable";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface TeacherTimetableProps {
   data: TimetableData;
@@ -44,85 +46,92 @@ export default function TeacherTimetable({
   );
 
   return (
-    <div className="overflow-x-auto">
-      <h3 className="text-2xl font-bold mb-4">
-        {teacher.name} 교사 시간표
-      </h3>
-      <div className="mb-4 text-sm text-gray-600">
-        주당 시수: {teacher.weeklyHours}시간 / 배정된 시수:{" "}
-        {teacherAssignments.length}시간
-      </div>
-      <table className="w-full border-collapse bg-white rounded-xl overflow-hidden shadow-lg">
-        <thead>
-          <tr className="bg-gradient-to-r from-purple-600 to-purple-700 text-white">
-            <th className="px-6 py-4 text-left font-semibold">교시</th>
-            {DAYS.filter((day) =>
-              data.schoolSchedule.days.includes(day)
-            ).map((day) => (
-              <th
-                key={day}
-                className="px-6 py-4 text-center font-semibold border-l border-purple-500"
-              >
-                {day}요일
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {Array.from({ length: maxPeriods }, (_, i) => i + 1).map(
-            (period) => (
-              <tr
-                key={period}
-                className="border-b border-gray-200 hover:bg-gray-50"
-              >
-                <td className="px-6 py-4 text-center font-semibold bg-gray-50">
-                  {period}
-                </td>
+    <Card>
+      <CardHeader className="bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-t-xl">
+        <CardTitle className="text-2xl">
+          {teacher.name} 교사 시간표
+        </CardTitle>
+        <div className="text-purple-100 mt-2 text-sm">
+          주당 시수: <span className="font-semibold">{teacher.weeklyHours}시간</span> / 배정된 시수:{" "}
+          <span className="font-semibold">{teacherAssignments.length}시간</span>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-gradient-to-r from-purple-600 to-purple-700 hover:bg-purple-700">
+                <TableHead className="text-white font-semibold text-center w-20">
+                  교시
+                </TableHead>
                 {DAYS.filter((day) =>
                   data.schoolSchedule.days.includes(day)
-                ).map((day) => {
-                  const assignment = grid[day][period];
-                  const classItem = assignment
-                    ? data.classes.find((c) => c.id === assignment.classId)
-                    : null;
-                  const subject = assignment
-                    ? data.subjects.find((s) => s.id === assignment.subjectId)
-                    : null;
+                ).map((day) => (
+                  <TableHead
+                    key={day}
+                    className="text-white font-semibold text-center border-l border-purple-500 min-w-[150px]"
+                  >
+                    {day}요일
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: maxPeriods }, (_, i) => i + 1).map(
+                (period) => (
+                  <TableRow
+                    key={period}
+                    className="hover:bg-gray-50 transition-colors"
+                  >
+                    <TableCell className="text-center font-semibold bg-gray-50 text-gray-700 border-r">
+                      {period}
+                    </TableCell>
+                    {DAYS.filter((day) =>
+                      data.schoolSchedule.days.includes(day)
+                    ).map((day) => {
+                      const assignment = grid[day][period];
+                      const classItem = assignment
+                        ? data.classes.find((c) => c.id === assignment.classId)
+                        : null;
+                      const subject = assignment
+                        ? data.subjects.find((s) => s.id === assignment.subjectId)
+                        : null;
 
-                  // 교시 수 확인
-                  const maxPeriodForDay =
-                    data.schoolSchedule.periodsPerDay[day];
-                  const isEmpty = period > maxPeriodForDay;
+                      const maxPeriodForDay =
+                        data.schoolSchedule.periodsPerDay[day];
+                      const isEmpty = period > maxPeriodForDay;
 
-                  return (
-                    <td
-                      key={day}
-                      className={`px-4 py-4 text-center border-l border-gray-200 ${
-                        isEmpty ? "bg-gray-100" : ""
-                      }`}
-                    >
-                      {assignment && classItem && subject ? (
-                        <div className="space-y-1">
-                          <div className="font-semibold text-gray-800">
-                            {classItem.name}
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            {subject.name}
-                          </div>
-                        </div>
-                      ) : isEmpty ? (
-                        <span className="text-gray-400">-</span>
-                      ) : (
-                        <span className="text-gray-300">빈 시간</span>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            )
-          )}
-        </tbody>
-      </table>
-    </div>
+                      return (
+                        <TableCell
+                          key={day}
+                          className={`text-center border-l ${
+                            isEmpty ? "bg-gray-100" : ""
+                          }`}
+                        >
+                          {assignment && classItem && subject ? (
+                            <div className="bg-purple-100 text-purple-900 rounded-lg p-3 shadow-sm">
+                              <div className="font-semibold text-base mb-1">
+                                {classItem.name}
+                              </div>
+                              <div className="text-sm text-purple-700">
+                                {subject.name}
+                              </div>
+                            </div>
+                          ) : isEmpty ? (
+                            <span className="text-gray-400">-</span>
+                          ) : (
+                            <span className="text-gray-300">빈 시간</span>
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                )
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

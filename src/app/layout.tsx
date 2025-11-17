@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "../styles/global.css";
+import "../styles/design-system.css";
 
 export const metadata: Metadata = {
   title: "시간표 자동 생성 시스템",
@@ -13,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

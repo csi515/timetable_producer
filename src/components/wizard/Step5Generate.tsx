@@ -2,8 +2,13 @@
 
 import { useState } from "react";
 import { TimetableData, Assignment } from "@/types/timetable";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Progress } from "@/components/ui/progress";
 import { BacktrackSolver } from "@/core/csp/backtrackSolver";
 import { BacktrackResult } from "@/core/csp/types";
+import { Play, RotateCcw, CheckCircle2, XCircle, Loader2, BarChart3 } from "lucide-react";
 
 interface Step5GenerateProps {
   data: TimetableData;
@@ -27,7 +32,6 @@ export default function Step5Generate({
     setLogs([]);
     setResult(null);
 
-    // UI 업데이트를 위한 약간의 지연
     setTimeout(() => {
       try {
         const solver = new BacktrackSolver(data, 100000, 10000);
@@ -57,143 +61,194 @@ export default function Step5Generate({
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="card">
-        <h2 className="text-3xl font-bold mb-6">시간표 생성</h2>
-        <p className="text-gray-600 mb-8">
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="mb-8">
+        <CardTitle className="text-3xl font-bold mb-2 flex items-center gap-3">
+          <BarChart3 className="w-8 h-8 text-primary-600" />
+          시간표 생성
+        </CardTitle>
+        <CardDescription className="text-lg mt-2">
           CSP 기반 백트래킹 알고리즘을 사용하여 시간표를 생성합니다.
-        </p>
+        </CardDescription>
+      </div>
 
-        {/* 생성 버튼 */}
-        <div className="flex gap-4 mb-8">
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating}
-            className="btn btn-primary text-lg px-8 py-4 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isGenerating ? "생성 중..." : "🚀 시간표 생성 시작"}
-          </button>
-          <button
-            onClick={handleClear}
-            disabled={isGenerating || data.assignments.length === 0}
-            className="btn btn-secondary text-lg px-8 py-4 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            초기화
-          </button>
-        </div>
-
-        {/* 결과 표시 */}
-        {result && (
-          <div
-            className={`p-6 rounded-xl border-2 mb-6 ${
-              result.success
-                ? "bg-green-50 border-green-200"
-                : "bg-red-50 border-red-200"
-            }`}
-          >
-            <h3
-              className={`text-2xl font-bold mb-4 ${
-                result.success ? "text-green-800" : "text-red-800"
-              }`}
+      {/* 생성 버튼 */}
+      <Card className="mb-6">
+        <CardContent className="p-6">
+          <div className="flex flex-wrap gap-4">
+            <Button
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              size="lg"
+              className="gap-2 text-lg px-8"
             >
-              {result.success ? "✅ 생성 완료!" : "❌ 생성 실패"}
-            </h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-semibold">반복 횟수:</span>{" "}
-                {result.iterations.toLocaleString()}
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  생성 중...
+                </>
+              ) : (
+                <>
+                  <Play className="w-5 h-5" />
+                  시간표 생성 시작
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={handleClear}
+              disabled={isGenerating || data.assignments.length === 0}
+              variant="outline"
+              size="lg"
+              className="gap-2"
+            >
+              <RotateCcw className="w-5 h-5" />
+              초기화
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 결과 표시 */}
+      {result && (
+        <Card className={`mb-6 border-2 ${
+          result.success
+            ? "border-success-200 bg-success-50"
+            : "border-error-200 bg-error-50"
+        }`}>
+          <CardHeader>
+            <CardTitle className={`flex items-center gap-2 ${
+              result.success ? "text-success-700" : "text-error-700"
+            }`}>
+              {result.success ? (
+                <CheckCircle2 className="w-6 h-6" />
+              ) : (
+                <XCircle className="w-6 h-6" />
+              )}
+              {result.success ? "생성 완료!" : "생성 실패"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <div className="bg-white rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold text-gray-900">
+                  {result.iterations.toLocaleString()}
+                </div>
+                <div className="text-sm text-gray-600 mt-1">반복 횟수</div>
               </div>
-              <div>
-                <span className="font-semibold">백트래킹 횟수:</span>{" "}
-                {result.backtracks.toLocaleString()}
+              <div className="bg-white rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold text-gray-900">
+                  {result.backtracks.toLocaleString()}
+                </div>
+                <div className="text-sm text-gray-600 mt-1">백트래킹</div>
               </div>
-              <div>
-                <span className="font-semibold">배정된 수업:</span>{" "}
-                {result.assignments.length}개
+              <div className="bg-white rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold text-gray-900">
+                  {result.assignments.length}
+                </div>
+                <div className="text-sm text-gray-600 mt-1">배정된 수업</div>
               </div>
-              <div>
-                <span className="font-semibold">위반 사항:</span>{" "}
-                {result.violations.length}개
+              <div className="bg-white rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold text-gray-900">
+                  {result.violations.length}
+                </div>
+                <div className="text-sm text-gray-600 mt-1">위반 사항</div>
               </div>
             </div>
 
             {result.violations.length > 0 && (
-              <div className="mt-4">
-                <h4 className="font-semibold text-red-800 mb-2">
-                  위반 사항:
-                </h4>
-                <ul className="list-disc list-inside text-sm text-red-700 space-y-1">
-                  {result.violations.map((violation, index) => (
-                    <li key={index}>{violation}</li>
-                  ))}
-                </ul>
-              </div>
+              <Alert variant="destructive" className="mt-4">
+                <AlertTitle>위반 사항</AlertTitle>
+                <AlertDescription>
+                  <ul className="list-disc list-inside space-y-1 mt-2">
+                    {result.violations.map((violation, index) => (
+                      <li key={index} className="text-sm">{violation}</li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
             )}
-          </div>
-        )}
+          </CardContent>
+        </Card>
+      )}
 
-        {/* 로그 표시 */}
-        {(isGenerating || logs.length > 0) && (
-          <div className="bg-gray-900 text-green-400 p-6 rounded-xl font-mono text-sm max-h-96 overflow-y-auto">
-            <div className="space-y-1">
-              {logs.map((log, index) => (
-                <div key={index}>{log}</div>
-              ))}
-              {isGenerating && (
-                <div className="animate-pulse">생성 중...</div>
-              )}
+      {/* 로그 표시 */}
+      {(isGenerating || logs.length > 0) && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="text-lg">생성 로그</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="bg-gray-900 text-green-400 p-6 rounded-lg font-mono text-sm max-h-96 overflow-y-auto">
+              <div className="space-y-1">
+                {logs.map((log, index) => (
+                  <div key={index} className="whitespace-pre-wrap">{log}</div>
+                ))}
+                {isGenerating && (
+                  <div className="animate-pulse text-blue-400 flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    생성 중...
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          </CardContent>
+        </Card>
+      )}
 
-        {/* 데이터 검증 */}
-        <div className="mt-8 p-6 bg-blue-50 rounded-xl border-2 border-blue-200">
-          <h3 className="text-lg font-semibold text-blue-800 mb-4">
-            📊 데이터 검증
-          </h3>
-          <div className="space-y-2 text-sm text-blue-700">
-            <div>
-              학급 수: <strong>{data.classes.length}개</strong>
+      {/* 데이터 검증 */}
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <BarChart3 className="w-5 h-5" />
+            데이터 검증
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">{data.classes.length}</div>
+              <div className="text-sm text-gray-600 mt-1">학급 수</div>
             </div>
-            <div>
-              과목 수: <strong>{data.subjects.length}개</strong>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{data.subjects.length}</div>
+              <div className="text-sm text-gray-600 mt-1">과목 수</div>
             </div>
-            <div>
-              교사 수: <strong>{data.teachers.length}개</strong>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600">{data.teachers.length}</div>
+              <div className="text-sm text-gray-600 mt-1">교사 수</div>
             </div>
-            <div>
-              총 필요 시수:{" "}
-              <strong>
-                {data.teachers.reduce((sum, t) => sum + t.weeklyHours, 0)}시간
-              </strong>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-600">
+                {data.teachers.reduce((sum, t) => sum + t.weeklyHours, 0)}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">총 필요 시수</div>
             </div>
-            <div>
-              사용 가능한 슬롯:{" "}
-              <strong>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-indigo-600">
                 {data.schoolSchedule.days.reduce(
-                  (sum, day) =>
-                    sum + data.schoolSchedule.periodsPerDay[day],
+                  (sum, day) => sum + data.schoolSchedule.periodsPerDay[day],
                   0
                 ) * data.classes.length}
-                개
-              </strong>
+              </div>
+              <div className="text-sm text-gray-600 mt-1">사용 가능 슬롯</div>
             </div>
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        {/* 네비게이션 */}
-        <div className="navigation">
-          <button className="btn btn-secondary" onClick={prevStep}>
-            이전
-          </button>
-          <button
-            className="btn btn-primary"
-            onClick={nextStep}
-            disabled={!result?.success || data.assignments.length === 0}
-          >
-            결과 확인
-          </button>
-        </div>
+      {/* 네비게이션 */}
+      <div className="flex justify-between items-center pt-6 border-t border-gray-200">
+        <Button variant="outline" onClick={prevStep} size="lg">
+          이전
+        </Button>
+        <Button
+          onClick={nextStep}
+          disabled={!result?.success || data.assignments.length === 0}
+          size="lg"
+          className="px-8"
+        >
+          결과 확인
+        </Button>
       </div>
     </div>
   );

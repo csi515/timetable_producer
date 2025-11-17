@@ -1,0 +1,99 @@
+/* 디자인 시스템 - 색상 팔레트 및 커스텀 스타일 */
+
+:root {
+  /* Primary Colors */
+  --primary-50: #eff6ff;
+  --primary-100: #dbeafe;
+  --primary-200: #bfdbfe;
+  --primary-300: #93c5fd;
+  --primary-400: #60a5fa;
+  --primary-500: #3b82f6;
+  --primary-600: #2563eb;
+  --primary-700: #1d4ed8;
+  --primary-800: #1e40af;
+  --primary-900: #1e3a8a;
+
+  /* Secondary Colors */
+  --secondary-50: #f0f9ff;
+  --secondary-100: #e0f2fe;
+  --secondary-200: #bae6fd;
+  --secondary-300: #7dd3fc;
+  --secondary-400: #38bdf8;
+  --secondary-500: #0ea5e9;
+  --secondary-600: #0284c7;
+  --secondary-700: #0369a1;
+
+  /* Success Colors */
+  --success-50: #f0fdf4;
+  --success-100: #dcfce7;
+  --success-500: #22c55e;
+  --success-600: #16a34a;
+
+  /* Warning Colors */
+  --warning-50: #fffbeb;
+  --warning-100: #fef3c7;
+  --warning-500: #f59e0b;
+  --warning-600: #d97706;
+
+  /* Error Colors */
+  --error-50: #fef2f2;
+  --error-100: #fee2e2;
+  --error-500: #ef4444;
+  --error-600: #dc2626;
+
+  /* Neutral Colors */
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-800: #1f2937;
+  --gray-900: #111827;
+
+  /* 과목 색상 팔레트 */
+  --subject-math: #3b82f6;      /* 수학 - 파란색 */
+  --subject-korean: #ef4444;    /* 국어 - 빨간색 */
+  --subject-english: #10b981;   /* 영어 - 초록색 */
+  --subject-science: #8b5cf6;   /* 과학 - 보라색 */
+  --subject-social: #f59e0b;    /* 사회 - 주황색 */
+  --subject-pe: #ec4899;        /* 체육 - 핑크색 */
+  --subject-music: #14b8a6;     /* 음악 - 청록색 */
+  --subject-art: #f97316;       /* 미술 - 오렌지색 */
+  --subject-computer: #6366f1;  /* 컴퓨터 - 인디고색 */
+  --subject-other: #64748b;     /* 기타 - 회색 */
+
+  /* 간격 */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+
+  /* 그림자 */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+
+  /* 테두리 반경 */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+/* 커스텀 유틸리티 클래스 */
+.subject-math { background-color: var(--subject-math); color: white; }
+.subject-korean { background-color: var(--subject-korean); color: white; }
+.subject-english { background-color: var(--subject-english); color: white; }
+.subject-science { background-color: var(--subject-science); color: white; }
+.subject-social { background-color: var(--subject-social); color: white; }
+.subject-pe { background-color: var(--subject-pe); color: white; }
+.subject-music { background-color: var(--subject-music); color: white; }
+.subject-art { background-color: var(--subject-art); color: white; }
+.subject-computer { background-color: var(--subject-computer); color: white; }
+.subject-other { background-color: var(--subject-other); color: white; }

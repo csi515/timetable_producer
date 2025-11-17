@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { TimetableData, Teacher, TimeSlot, Day } from "@/types/timetable";
-import { Plus, Trash2, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Plus, Trash2, X, User, Clock, BookOpen } from "lucide-react";
 
 interface Step3TeachersProps {
   data: TimetableData;
@@ -98,46 +102,65 @@ export default function Step3Teachers({
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
-      <div className="card">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-3xl font-bold">교사 설정</h2>
-          <button
-            onClick={addTeacher}
-            className="btn btn-primary flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            교사 추가
-          </button>
-        </div>
+    <div className="max-w-6xl mx-auto p-6 space-y-6">
+      <div className="mb-8">
+        <CardTitle className="text-3xl font-bold mb-2 flex items-center gap-3">
+          <User className="w-8 h-8 text-primary-600" />
+          교사 설정
+        </CardTitle>
+        <CardDescription className="text-lg mt-2">
+          교사 정보, 담당 과목, 주당 시수, 불가능한 시간대를 설정하세요.
+        </CardDescription>
+      </div>
 
-        <div className="space-y-6">
-          {teachers.map((teacher) => (
-            <div
-              key={teacher.id}
-              className="p-6 bg-gray-50 rounded-xl border-2 border-gray-200"
-            >
+      <div className="flex justify-end mb-6">
+        <Button onClick={addTeacher} className="gap-2">
+          <Plus className="w-4 h-4" />
+          교사 추가
+        </Button>
+      </div>
+
+      <div className="space-y-6">
+        {teachers.map((teacher) => (
+          <Card key={teacher.id} className="border-2">
+            <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <User className="w-5 h-5" />
+                  교사 정보
+                </CardTitle>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => removeTeacher(teacher.id)}
+                  className="gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  삭제
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-6">
               {/* 기본 정보 */}
-              <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="text-sm text-gray-600 mb-1 block">
-                    교사명 *
-                  </label>
-                  <input
+                  <Label className="text-sm font-semibold text-gray-700 mb-2 block">
+                    교사명 <span className="text-error-500">*</span>
+                  </Label>
+                  <Input
                     type="text"
                     value={teacher.name}
                     onChange={(e) =>
                       updateTeacher(teacher.id, { name: e.target.value })
                     }
                     placeholder="예: 홍길동"
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg"
                   />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600 mb-1 block">
-                    주당 시수 *
-                  </label>
-                  <input
+                  <Label className="text-sm font-semibold text-gray-700 mb-2 block">
+                    주당 시수 <span className="text-error-500">*</span>
+                  </Label>
+                  <Input
                     type="number"
                     min="0"
                     value={teacher.weeklyHours}
@@ -146,14 +169,13 @@ export default function Step3Teachers({
                         weeklyHours: parseInt(e.target.value) || 0,
                       })
                     }
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg"
                   />
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600 mb-1 block">
+                  <Label className="text-sm font-semibold text-gray-700 mb-2 block">
                     하루 최대 수업수 (선택)
-                  </label>
-                  <input
+                  </Label>
+                  <Input
                     type="number"
                     min="1"
                     value={teacher.maxHoursPerDay || ""}
@@ -165,51 +187,61 @@ export default function Step3Teachers({
                       })
                     }
                     placeholder="제한 없음"
-                    className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg"
                   />
                 </div>
               </div>
 
               {/* 담당 과목 */}
-              <div className="mb-4">
-                <label className="text-sm text-gray-600 mb-2 block">
-                  담당 과목 *
-                </label>
+              <div>
+                <Label className="text-sm font-semibold text-gray-700 mb-3 block flex items-center gap-2">
+                  <BookOpen className="w-4 h-4" />
+                  담당 과목 <span className="text-error-500">*</span>
+                </Label>
                 <div className="flex flex-wrap gap-2">
-                  {data.subjects.map((subject) => (
-                    <button
-                      key={subject.id}
-                      onClick={() => toggleSubject(teacher.id, subject.id)}
-                      className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                        teacher.subjects.includes(subject.id)
-                          ? "bg-blue-600 text-white"
-                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                      }`}
-                    >
-                      {subject.name}
-                    </button>
-                  ))}
+                  {data.subjects.map((subject) => {
+                    const isSelected = teacher.subjects.includes(subject.id);
+                    return (
+                      <button
+                        key={subject.id}
+                        onClick={() => toggleSubject(teacher.id, subject.id)}
+                        className={`
+                          px-4 py-2 rounded-lg font-semibold text-sm transition-all transform hover:scale-105
+                          ${
+                            isSelected
+                              ? "bg-primary-600 text-white shadow-md"
+                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          }
+                        `}
+                      >
+                        {subject.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* 불가능 시간 */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm text-gray-600">
+                <div className="flex items-center justify-between mb-3">
+                  <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <Clock className="w-4 h-4" />
                     불가능한 시간대
-                  </label>
-                  <button
+                  </Label>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => addUnavailableSlot(teacher.id)}
-                    className="text-sm text-blue-600 hover:text-blue-700 font-semibold"
+                    className="gap-2"
                   >
-                    + 추가
-                  </button>
+                    <Plus className="w-4 h-4" />
+                    추가
+                  </Button>
                 </div>
                 <div className="space-y-2">
                   {teacher.unavailableSlots.map((slot, index) => (
                     <div
                       key={index}
-                      className="flex items-center gap-2 p-2 bg-white rounded-lg"
+                      className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200"
                     >
                       <select
                         value={slot.day}
@@ -218,7 +250,7 @@ export default function Step3Teachers({
                             day: e.target.value as Day,
                           })
                         }
-                        className="px-3 py-1 border border-gray-300 rounded"
+                        className="px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-primary-500"
                       >
                         {DAYS.map((day) => (
                           <option key={day} value={day}>
@@ -226,7 +258,7 @@ export default function Step3Teachers({
                           </option>
                         ))}
                       </select>
-                      <input
+                      <Input
                         type="number"
                         min="1"
                         max="10"
@@ -236,56 +268,58 @@ export default function Step3Teachers({
                             period: parseInt(e.target.value) || 1,
                           })
                         }
-                        className="w-20 px-3 py-1 border border-gray-300 rounded"
+                        className="w-20"
                       />
-                      <span className="text-sm text-gray-600">교시</span>
-                      <button
+                      <span className="text-sm text-gray-600 font-medium">교시</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => removeUnavailableSlot(teacher.id, index)}
-                        className="ml-auto p-1 text-red-600 hover:bg-red-50 rounded"
+                        className="ml-auto"
                       >
                         <X className="w-4 h-4" />
-                      </button>
+                      </Button>
                     </div>
                   ))}
+                  {teacher.unavailableSlots.length === 0 && (
+                    <p className="text-sm text-gray-500 text-center py-4">
+                      불가능한 시간대가 없습니다.
+                    </p>
+                  )}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        ))}
 
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={() => removeTeacher(teacher.id)}
-                  className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {teachers.length === 0 && (
-            <p className="text-center text-gray-500 py-8">
-              교사를 추가해주세요.
-            </p>
-          )}
-        </div>
+        {teachers.length === 0 && (
+          <Card>
+            <CardContent className="py-12 text-center text-gray-500">
+              <User className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+              <p>교사를 추가해주세요.</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* 네비게이션 */}
-      <div className="navigation">
-        <button className="btn btn-secondary" onClick={prevStep}>
+      <div className="flex justify-between items-center pt-6 border-t border-gray-200">
+        <Button variant="outline" onClick={prevStep} size="lg">
           이전
-        </button>
-        <button
-          className="btn btn-primary"
+        </Button>
+        <Button
           onClick={handleSave}
+          size="lg"
           disabled={
             teachers.length === 0 ||
             teachers.some(
               (t) => !t.name || t.subjects.length === 0 || t.weeklyHours === 0
             )
           }
+          className="px-8"
         >
           다음 단계
-        </button>
+        </Button>
       </div>
     </div>
   );
