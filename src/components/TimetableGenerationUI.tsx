@@ -7,15 +7,17 @@ import { useTimetableGeneration } from '../hooks/useTimetableGeneration';
 interface TimetableGenerationProps {
   data: TimetableData;
   updateData: (key: string, value: any) => void;
-  nextStep: () => void;
-  prevStep: () => void;
+  nextStep?: () => void;
+  prevStep?: () => void;
+  onComplete?: (scheduleData: any) => void;
 }
 
 const TimetableGeneration: React.FC<TimetableGenerationProps> = ({ 
   data, 
   updateData, 
   nextStep, 
-  prevStep 
+  prevStep,
+  onComplete
 }) => {
   const {
     isGenerating,
@@ -37,7 +39,11 @@ const TimetableGeneration: React.FC<TimetableGenerationProps> = ({
 
   const handleNextStep = () => {
     if (generationResults && generationResults.schedule) {
-      nextStep();
+      if (onComplete) {
+        onComplete(generationResults.schedule);
+      } else if (nextStep) {
+        nextStep();
+      }
     } else {
       addLog('⚠️ 먼저 시간표를 생성해주세요.', 'warning');
     }
@@ -208,12 +214,14 @@ const TimetableGeneration: React.FC<TimetableGenerationProps> = ({
 
         {/* 네비게이션 버튼 */}
         <div className="flex justify-between">
-          <button
-            onClick={prevStep}
-            className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-          >
-            이전
-          </button>
+          {prevStep && (
+            <button
+              onClick={prevStep}
+              className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+            >
+              이전
+            </button>
+          )}
           <button
             onClick={handleNextStep}
             disabled={!generationResults || !generationResults.schedule}

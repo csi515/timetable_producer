@@ -13,8 +13,8 @@ function createExampleData(): TimetableData {
       { id: 'class_2', name: '1학년 2반', grade: 1, classNumber: 2 },
     ],
     subjects: [
-      { id: 'math', name: '수학', maxPerDay: 1 },
-      { id: 'pe', name: '체육', requiresConsecutive: true },
+      { id: 'math', name: '수학', maxPerDay: 1, weeklyHours: 3 },
+      { id: 'pe', name: '체육', requiresConsecutive: true, weeklyHours: 2 },
     ],
     teachers: [
       {

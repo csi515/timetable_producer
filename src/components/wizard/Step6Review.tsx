@@ -5,6 +5,7 @@ import { TimetableData, Assignment, Day } from "@/types/timetable";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
 import TimetableGrid from "@/components/timetable/TimetableGrid";
 import TeacherTimetable from "@/components/timetable/TeacherTimetable";
 import { Download, FileSpreadsheet, Image as ImageIcon, AlertCircle } from "lucide-react";

@@ -17,6 +17,7 @@ export interface Class {
 export interface Subject {
   id: string;
   name: string; // 예: "수학", "체육"
+  weeklyHours?: number; // 주당 시수
   requiresConsecutive?: boolean; // 연강 필요 여부 (2교시 연속)
   requiresSpecialRoom?: boolean; // 특별실 필요 여부
   specialRoomType?: string; // "실험실", "컴퓨터실" 등

@@ -309,7 +309,7 @@ export default function EditorPage() {
                 updateData={updateData}
                 nextStep={nextStep}
                 prevStep={prevStep}
-                goToStep={goToStep}
+                {...(currentStep === 0 ? {} : { goToStep })}
               />
             </Card>
           </div>

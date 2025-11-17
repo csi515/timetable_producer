@@ -1,6 +1,6 @@
 // 제약조건 검사기 구현
 
-import { Assignment, TimeSlot, Teacher, Subject, Class, TimetableData } from '../../types/timetable';
+import { Assignment, TimeSlot, Teacher, Subject, Class, TimetableData, Domain } from '../../types/timetable';
 import { ConstraintChecker } from './types';
 
 export class TeacherConflictChecker implements ConstraintChecker {
@@ -21,10 +21,10 @@ export class TeacherConflictChecker implements ConstraintChecker {
     const updatedDomains = new Map(domains);
     
     // 이 교사가 배정된 시간을 다른 변수의 도메인에서 제거
-    domains.forEach((domain, key) => {
+    domains.forEach((domain: Domain, key: string) => {
       if (key.includes(assignment.teacherId)) {
         const filtered = domain.filter(
-          slot => !(slot.day === assignment.slot.day && slot.period === assignment.slot.period)
+          (slot: TimeSlot) => !(slot.day === assignment.slot.day && slot.period === assignment.slot.period)
         );
         updatedDomains.set(key, filtered);
       }

@@ -7,7 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Trash2, GraduationCap, BookOpen } from "lucide-react";
+import { Plus, Trash2, GraduationCap, BookOpen, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Step2ClassesSubjectsProps {
   data: TimetableData;
@@ -26,12 +27,10 @@ export default function Step2ClassesSubjects({
   const [subjects, setSubjects] = useState<Subject[]>(data.subjects);
 
   const addClass = () => {
-    const grade = Math.max(...classes.map((c) => c.grade), 0) + 1;
-    const classNumber =
-      Math.max(
-        ...classes.filter((c) => c.grade === grade).map((c) => c.classNumber),
-        0
-      ) + 1;
+    const existingGrades = classes.map(c => c.grade);
+    const maxGrade = existingGrades.length > 0 ? Math.max(...existingGrades) : 0;
+    const grade = maxGrade + 1;
+    const classNumber = 1;
 
     const newClass: Class = {
       id: `class_${Date.now()}`,
@@ -67,7 +66,7 @@ export default function Step2ClassesSubjects({
     const newSubject: Subject = {
       id: `subject_${Date.now()}`,
       name: "",
-      weeklyHours: 0,
+      weeklyHours: 1,
       requiresConsecutive: false,
       requiresSpecialRoom: false,
       maxPerDay: 1,
@@ -92,88 +91,112 @@ export default function Step2ClassesSubjects({
     nextStep();
   };
 
+  const canProceed = classes.length > 0 && subjects.length > 0 && 
+    subjects.every(s => s.name.trim() !== "");
+
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-8">
+    <div className="space-y-6">
+      {/* 헤더 */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-12 h-12 rounded-lg bg-success-100 flex items-center justify-center">
+            <GraduationCap className="w-6 h-6 text-success-600" />
+          </div>
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900">학급 및 과목 설정</h2>
+            <p className="text-gray-600 mt-1">
+              학급 목록과 과목 정보를 입력하세요
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* 학급 설정 */}
-      <Card>
-        <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+      <Card className="border-2">
+        <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center">
-                <GraduationCap className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <CardTitle className="text-2xl">학급 설정</CardTitle>
-                <CardDescription>
-                  학년과 반 정보를 입력하세요.
-                </CardDescription>
-              </div>
-            </div>
-            <Button onClick={addClass} className="gap-2">
+            <CardTitle className="text-xl flex items-center gap-2">
+              <GraduationCap className="w-5 h-5 text-primary-600" />
+              학급 설정
+            </CardTitle>
+            <Button
+              onClick={addClass}
+              size="sm"
+              className="gap-2"
+            >
               <Plus className="w-4 h-4" />
               학급 추가
             </Button>
           </div>
+          <CardDescription>
+            학교의 학급 정보를 입력하세요. 학년과 반 번호를 설정합니다.
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-6">
           <div className="space-y-4">
-            {classes.map((classItem) => (
-              <Card key={classItem.id} className="border-2">
+            {classes.map((classItem, index) => (
+              <Card
+                key={classItem.id}
+                className="border-2 border-gray-200 hover:border-primary-300 transition-all"
+              >
                 <CardContent className="p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                    <div>
-                      <Label className="text-sm text-gray-600 mb-2 block">
-                        학년
-                      </Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="6"
-                        value={classItem.grade}
-                        onChange={(e) =>
-                          updateClass(classItem.id, {
-                            grade: parseInt(e.target.value) || 1,
-                          })
-                        }
-                      />
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <Label className="text-sm text-gray-600 mb-2 block">
+                          학년 *
+                        </Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="6"
+                          value={classItem.grade}
+                          onChange={(e) =>
+                            updateClass(classItem.id, {
+                              grade: parseInt(e.target.value) || 1,
+                            })
+                          }
+                          className="font-semibold"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm text-gray-600 mb-2 block">
+                          반 번호 *
+                        </Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={classItem.classNumber}
+                          onChange={(e) =>
+                            updateClass(classItem.id, {
+                              classNumber: parseInt(e.target.value) || 1,
+                            })
+                          }
+                          className="font-semibold"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm text-gray-600 mb-2 block">
+                          학급명
+                        </Label>
+                        <Input
+                          type="text"
+                          value={classItem.name}
+                          onChange={(e) =>
+                            updateClass(classItem.id, { name: e.target.value })
+                          }
+                          placeholder="예: 1학년 1반"
+                          className="font-semibold"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <Label className="text-sm text-gray-600 mb-2 block">
-                        반
-                      </Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={classItem.classNumber}
-                        onChange={(e) =>
-                          updateClass(classItem.id, {
-                            classNumber: parseInt(e.target.value) || 1,
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <Label className="text-sm text-gray-600 mb-2 block">
-                        학급명
-                      </Label>
-                      <Input
-                        type="text"
-                        value={classItem.name}
-                        onChange={(e) =>
-                          updateClass(classItem.id, { name: e.target.value })
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-4 flex justify-end">
                     <Button
-                      variant="destructive"
-                      size="sm"
                       onClick={() => removeClass(classItem.id)}
-                      className="gap-2"
+                      variant="ghost"
+                      size="icon"
+                      className="text-error-600 hover:text-error-700 hover:bg-error-50"
                     >
-                      <Trash2 className="w-4 h-4" />
-                      삭제
+                      <Trash2 className="w-5 h-5" />
                     </Button>
                   </div>
                 </CardContent>
@@ -181,179 +204,198 @@ export default function Step2ClassesSubjects({
             ))}
 
             {classes.length === 0 && (
-              <div className="text-center py-12 text-gray-500">
-                <GraduationCap className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <p>학급을 추가해주세요.</p>
-              </div>
+              <Alert variant="warning" className="border-warning-200">
+                <AlertCircle className="w-4 h-4" />
+                <AlertDescription>
+                  학급을 추가해주세요. 최소 1개 이상의 학급이 필요합니다.
+                </AlertDescription>
+              </Alert>
             )}
           </div>
         </CardContent>
       </Card>
 
       {/* 과목 설정 */}
-      <Card>
-        <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b">
+      <Card className="border-2">
+        <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-green-600 flex items-center justify-center">
-                <BookOpen className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <CardTitle className="text-2xl">과목 설정</CardTitle>
-                <CardDescription>
-                  과목 정보와 제약조건을 설정하세요.
-                </CardDescription>
-              </div>
-            </div>
-            <Button onClick={addSubject} variant="success" className="gap-2">
+            <CardTitle className="text-xl flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-purple-600" />
+              과목 설정
+            </CardTitle>
+            <Button
+              onClick={addSubject}
+              size="sm"
+              variant="secondary"
+              className="gap-2"
+            >
               <Plus className="w-4 h-4" />
               과목 추가
             </Button>
           </div>
+          <CardDescription>
+            수업할 과목 정보를 입력하세요. 과목명, 주당 시수, 특수 조건을 설정합니다.
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-6">
           <div className="space-y-4">
-            {subjects.map((subject) => (
-              <Card key={subject.id} className="border-2">
+            {subjects.map((subject, index) => (
+              <Card
+                key={subject.id}
+                className="border-2 border-gray-200 hover:border-purple-300 transition-all"
+              >
                 <CardContent className="p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <Label className="text-sm font-semibold text-gray-700 mb-2 block">
-                        과목명 <span className="text-error-500">*</span>
-                      </Label>
-                      <Input
-                        type="text"
-                        value={subject.name}
-                        onChange={(e) =>
-                          updateSubject(subject.id, { name: e.target.value })
-                        }
-                        placeholder="예: 수학, 체육"
-                      />
+                  <div className="space-y-4">
+                    {/* 기본 정보 */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-sm font-semibold text-gray-700 mb-2 block">
+                          과목명 *
+                        </Label>
+                        <Input
+                          type="text"
+                          value={subject.name}
+                          onChange={(e) =>
+                            updateSubject(subject.id, { name: e.target.value })
+                          }
+                          placeholder="예: 수학, 체육"
+                          className="font-semibold"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm font-semibold text-gray-700 mb-2 block">
+                          주당 시수 *
+                        </Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={subject.weeklyHours || 1}
+                          onChange={(e) =>
+                            updateSubject(subject.id, {
+                              weeklyHours: parseInt(e.target.value) || 1,
+                            })
+                          }
+                          className="font-semibold"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <Label className="text-sm font-semibold text-gray-700 mb-2 block">
-                        주당 시수 <span className="text-error-500">*</span>
-                      </Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={subject.weeklyHours || 0}
-                        onChange={(e) =>
-                          updateSubject(subject.id, {
-                            weeklyHours: parseInt(e.target.value) || 0,
-                          })
-                        }
-                      />
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`consecutive-${subject.id}`}
-                        checked={subject.requiresConsecutive || false}
-                        onCheckedChange={(checked) =>
-                          updateSubject(subject.id, {
-                            requiresConsecutive: checked as boolean,
-                          })
-                        }
-                      />
-                      <Label
-                        htmlFor={`consecutive-${subject.id}`}
-                        className="text-sm cursor-pointer"
+                    {/* 옵션 설정 */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
+                        <Checkbox
+                          id={`consecutive-${subject.id}`}
+                          checked={subject.requiresConsecutive || false}
+                          onCheckedChange={(checked) =>
+                            updateSubject(subject.id, {
+                              requiresConsecutive: checked as boolean,
+                            })
+                          }
+                        />
+                        <Label
+                          htmlFor={`consecutive-${subject.id}`}
+                          className="text-sm font-medium cursor-pointer"
+                        >
+                          연강 필요 (2교시 연속)
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
+                        <Checkbox
+                          id={`special-${subject.id}`}
+                          checked={subject.requiresSpecialRoom || false}
+                          onCheckedChange={(checked) =>
+                            updateSubject(subject.id, {
+                              requiresSpecialRoom: checked as boolean,
+                            })
+                          }
+                        />
+                        <Label
+                          htmlFor={`special-${subject.id}`}
+                          className="text-sm font-medium cursor-pointer"
+                        >
+                          특별실 필요
+                        </Label>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-semibold text-gray-700 mb-2 block">
+                          하루 최대 배정
+                        </Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={subject.maxPerDay || 1}
+                          onChange={(e) =>
+                            updateSubject(subject.id, {
+                              maxPerDay: parseInt(e.target.value) || 1,
+                            })
+                          }
+                          className="font-semibold"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 특별실 종류 */}
+                    {subject.requiresSpecialRoom && (
+                      <div>
+                        <Label className="text-sm font-semibold text-gray-700 mb-2 block">
+                          특별실 종류
+                        </Label>
+                        <Input
+                          type="text"
+                          value={subject.specialRoomType || ""}
+                          onChange={(e) =>
+                            updateSubject(subject.id, {
+                              specialRoomType: e.target.value,
+                            })
+                          }
+                          placeholder="예: 실험실, 컴퓨터실, 음악실"
+                          className="font-semibold"
+                        />
+                      </div>
+                    )}
+
+                    {/* 삭제 버튼 */}
+                    <div className="flex justify-end pt-2 border-t">
+                      <Button
+                        onClick={() => removeSubject(subject.id)}
+                        variant="ghost"
+                        size="sm"
+                        className="text-error-600 hover:text-error-700 hover:bg-error-50"
                       >
-                        연강 필요 (2교시 연속)
-                      </Label>
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        삭제
+                      </Button>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`special-room-${subject.id}`}
-                        checked={subject.requiresSpecialRoom || false}
-                        onCheckedChange={(checked) =>
-                          updateSubject(subject.id, {
-                            requiresSpecialRoom: checked as boolean,
-                          })
-                        }
-                      />
-                      <Label
-                        htmlFor={`special-room-${subject.id}`}
-                        className="text-sm cursor-pointer"
-                      >
-                        특별실 필요
-                      </Label>
-                    </div>
-                    <div>
-                      <Label className="text-sm font-semibold text-gray-700 mb-2 block">
-                        하루 최대 배정
-                      </Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={subject.maxPerDay || 1}
-                        onChange={(e) =>
-                          updateSubject(subject.id, {
-                            maxPerDay: parseInt(e.target.value) || 1,
-                          })
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {subject.requiresSpecialRoom && (
-                    <div className="mb-4">
-                      <Label className="text-sm font-semibold text-gray-700 mb-2 block">
-                        특별실 종류
-                      </Label>
-                      <Input
-                        type="text"
-                        value={subject.specialRoomType || ""}
-                        onChange={(e) =>
-                          updateSubject(subject.id, {
-                            specialRoomType: e.target.value,
-                          })
-                        }
-                        placeholder="예: 실험실, 컴퓨터실"
-                      />
-                    </div>
-                  )}
-
-                  <div className="flex justify-end">
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => removeSubject(subject.id)}
-                      className="gap-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      삭제
-                    </Button>
                   </div>
                 </CardContent>
               </Card>
             ))}
 
             {subjects.length === 0 && (
-              <div className="text-center py-12 text-gray-500">
-                <BookOpen className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <p>과목을 추가해주세요.</p>
-              </div>
+              <Alert variant="warning" className="border-warning-200">
+                <AlertCircle className="w-4 h-4" />
+                <AlertDescription>
+                  과목을 추가해주세요. 최소 1개 이상의 과목이 필요합니다.
+                </AlertDescription>
+              </Alert>
             )}
           </div>
         </CardContent>
       </Card>
 
       {/* 네비게이션 */}
-      <div className="flex justify-between items-center pt-6 border-t border-gray-200">
-        <Button variant="outline" onClick={prevStep} size="lg">
-          이전
+      <div className="flex justify-between items-center pt-6 border-t-2 border-gray-200">
+        <Button variant="outline" onClick={prevStep} size="lg" className="px-8">
+          ← 이전
         </Button>
         <Button
           onClick={handleSave}
           size="lg"
-          disabled={classes.length === 0 || subjects.length === 0}
-          className="px-8"
+          className="px-8 shadow-lg hover:shadow-xl"
+          disabled={!canProceed}
         >
-          다음 단계
+          다음 단계 →
         </Button>
       </div>
     </div>

@@ -14,7 +14,7 @@ import {
 } from './ReviewAndExportHelpers';
 import { exportToJSON, exportToExcel } from './ReviewAndExportExport';
 
-function ReviewAndExport({ data, updateData, prevStep }) {
+function ReviewAndExport({ data, updateData, prevStep = () => {} }) {
   const [viewMode, setViewMode] = useState('class'); // 'class' or 'teacher'
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedTeacher, setSelectedTeacher] = useState('');
