@@ -1,12 +1,7 @@
 // 제약조건 기본 클래스 및 인터페이스
 
-import {
-  Slot,
-  TimetableData,
-  ConstraintEvaluationResult,
-  ConstraintMetadata,
-  PropagationResult,
-} from './types';
+import { Slot, TimetableData, ConstraintEvaluationResult, ConstraintMetadata } from './types';
+import { getSlot, isEmptySlot } from './utils';
 
 export interface IConstraint {
   /**
@@ -15,272 +10,96 @@ export interface IConstraint {
   readonly metadata: ConstraintMetadata;
 
   /**
-   * 슬롯 배치 전 검사 (하드 제약조건)
+   * 단일 슬롯 배치 전 검사 (하드 제약조건)
    * @param slot 배치하려는 슬롯
    * @param timetable 현재 시간표 상태
-   * @returns 제약조건 만족 여부
+   * @returns 제약조건 만족 여부 및 평가 결과
    */
-  checkHardConstraint(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult;
+  checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult;
 
   /**
-   * 소프트 제약조건 점수 계산
-   * @param slot 배치하려는 슬롯
-   * @param timetable 현재 시간표 상태
-   * @returns 점수 (낮을수록 좋음, 0이면 완벽)
-   */
-  checkSoftConstraint?(slot: Slot, timetable: TimetableData): number;
-
-  /**
-   * 제약조건 전파 (Forward Checking)
-   * @param slot 배치된 슬롯
-   * @param timetable 현재 시간표 상태
-   * @param domains 현재 도메인 맵
-   * @returns 전파 결과
-   */
-  propagate?(slot: Slot, timetable: TimetableData, domains: Map<string, TimeSlot[]>): PropagationResult;
-
-  /**
-   * 전체 시간표 검증
+   * 전체 시간표 검증 (하드 제약조건)
    * @param timetable 전체 시간표
-   * @returns 검증 결과
+   * @returns 제약조건 만족 여부 및 평가 결과
    */
   validateTimetable(timetable: TimetableData): ConstraintEvaluationResult;
+
+  /**
+   * 소프트 제약조건 점수 계산 (선택적)
+   * @param timetable 전체 시간표
+   * @returns 점수 (낮을수록 좋음, 0이면 완벽)
+   */
+  calculateSoftScore?(timetable: TimetableData): number;
 }
 
 export abstract class BaseConstraint implements IConstraint {
   abstract readonly metadata: ConstraintMetadata;
 
-  abstract checkHardConstraint(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult;
+  abstract checkBeforePlacement(slot: Slot, timetable: TimetableData): ConstraintEvaluationResult;
 
   abstract validateTimetable(timetable: TimetableData): ConstraintEvaluationResult;
 
-  // 소프트 제약조건은 선택적 구현
-  checkSoftConstraint?(slot: Slot, timetable: TimetableData): number {
-    return 0;
-  }
-
-  // 제약조건 전파는 선택적 구현
-  propagate?(slot: Slot, timetable: TimetableData, domains: Map<string, TimeSlot[]>): PropagationResult {
-    return {
-      domains: new Map(domains),
-      prunedValues: [],
-      hasEmptyDomain: false,
-    };
-  }
-
-  // ========== 유틸리티 메서드 ==========
-
   /**
-   * 성공 결과 생성
+   * 성공 결과 생성 헬퍼
    */
-  protected success(): ConstraintEvaluationResult {
+  protected success(score?: number): ConstraintEvaluationResult {
     return {
       satisfied: true,
       violatedConstraints: [],
-      severity: 'hard',
+      severity: 'error',
+      score,
     };
   }
 
   /**
-   * 하드 제약조건 위반 결과 생성
+   * 실패 결과 생성 헬퍼
    */
-  protected hardViolation(reason: string, details?: Record<string, any>): ConstraintEvaluationResult {
+  protected failure(
+    reason: string,
+    severity: 'error' | 'warning' = 'error',
+    details?: Record<string, any>,
+    score?: number
+  ): ConstraintEvaluationResult {
     return {
       satisfied: false,
       reason,
       violatedConstraints: [this.metadata.id],
-      severity: 'hard',
+      severity,
       details,
-    };
-  }
-
-  /**
-   * 소프트 제약조건 위반 결과 생성
-   */
-  protected softViolation(reason: string, score: number, details?: Record<string, any>): ConstraintEvaluationResult {
-    return {
-      satisfied: true, // 소프트 제약조건은 위반해도 배치는 가능
-      reason,
-      violatedConstraints: [this.metadata.id],
-      severity: 'soft',
       score,
-      details,
     };
   }
 
   /**
-   * 시간표에서 특정 슬롯 가져오기
+   * 시간표에서 특정 슬롯 가져오기 (유틸리티 래퍼)
    */
-  protected getSlot(timetable: TimetableData, classId: string, day: Day, period: number): Slot | null {
-    const classSchedule = timetable.timetable[classId];
-    if (!classSchedule) return null;
-
-    const daySchedule = classSchedule[day];
-    if (!daySchedule) return null;
-
-    return daySchedule[period] || null;
+  protected getSlot(timetable: TimetableData, classId: string, day: string, period: number): Slot | null {
+    return getSlot(timetable, classId, day as any, period);
   }
 
   /**
-   * 슬롯이 비어있는지 확인
+   * 슬롯이 비어있는지 확인 (유틸리티 래퍼)
    */
   protected isEmptySlot(slot: Slot | null): boolean {
-    return !slot || !slot.subjectId || !slot.teacherId;
+    return isEmptySlot(slot);
   }
 
   /**
-   * 특정 교사가 특정 시간에 배정되어 있는지 확인
+   * 데이터 검증 헬퍼
    */
-  protected isTeacherAssignedAt(
-    timetable: TimetableData,
-    teacherId: string,
-    day: Day,
-    period: number,
-    excludeClassId?: string
-  ): boolean {
-    for (const classId of Object.keys(timetable.timetable)) {
-      if (excludeClassId && classId === excludeClassId) continue;
-
-      const slot = this.getSlot(timetable, classId, day, period);
-      if (slot && slot.teacherId === teacherId) {
-        return true;
-      }
-
-      // 코티칭 교사도 확인
-      if (slot && slot.coTeachers?.includes(teacherId)) {
-        return true;
-      }
+  protected validateData(timetable: TimetableData): { valid: boolean; error?: string } {
+    if (!timetable.classes || timetable.classes.length === 0) {
+      return { valid: false, error: '학급 정보가 없습니다.' };
     }
-    return false;
-  }
-
-  /**
-   * 특정 반이 특정 시간에 수업이 있는지 확인
-   */
-  protected isClassOccupiedAt(timetable: TimetableData, classId: string, day: Day, period: number): boolean {
-    const slot = this.getSlot(timetable, classId, day, period);
-    return !this.isEmptySlot(slot);
-  }
-
-  /**
-   * 특정 교실이 특정 시간에 사용 중인지 확인
-   */
-  protected isRoomOccupiedAt(
-    timetable: TimetableData,
-    roomId: string,
-    day: Day,
-    period: number,
-    excludeClassId?: string
-  ): boolean {
-    for (const classId of Object.keys(timetable.timetable)) {
-      if (excludeClassId && classId === excludeClassId) continue;
-
-      const slot = this.getSlot(timetable, classId, day, period);
-      if (slot && slot.roomId === roomId) {
-        return true;
-      }
+    if (!timetable.subjects || timetable.subjects.length === 0) {
+      return { valid: false, error: '과목 정보가 없습니다.' };
     }
-    return false;
-  }
-
-  /**
-   * 교사가 특정 날에 배정된 수업 수 계산
-   */
-  protected countDailyLessons(timetable: TimetableData, teacherId: string, day: Day): number {
-    let count = 0;
-    for (const classId of Object.keys(timetable.timetable)) {
-      const classSchedule = timetable.timetable[classId];
-      const daySchedule = classSchedule[day];
-      if (!daySchedule) continue;
-
-      const maxPeriod = timetable.schoolConfig.periodsPerDay[day];
-      for (let period = 1; period <= maxPeriod; period++) {
-        const slot = daySchedule[period];
-        if (slot && (slot.teacherId === teacherId || slot.coTeachers?.includes(teacherId))) {
-          count++;
-        }
-      }
+    if (!timetable.teachers || timetable.teachers.length === 0) {
+      return { valid: false, error: '교사 정보가 없습니다.' };
     }
-    return count;
-  }
-
-  /**
-   * 반이 특정 날에 특정 과목이 배정된 횟수 계산
-   */
-  protected countDailySubjectLessons(
-    timetable: TimetableData,
-    classId: string,
-    subjectId: string,
-    day: Day
-  ): number {
-    const classSchedule = timetable.timetable[classId];
-    if (!classSchedule) return 0;
-
-    const daySchedule = classSchedule[day];
-    if (!daySchedule) return 0;
-
-    let count = 0;
-    const maxPeriod = timetable.schoolConfig.periodsPerDay[day];
-    for (let period = 1; period <= maxPeriod; period++) {
-      const slot = daySchedule[period];
-      if (slot && slot.subjectId === subjectId) {
-        count++;
-      }
+    if (!timetable.schoolSchedule) {
+      return { valid: false, error: '학교 일정 정보가 없습니다.' };
     }
-    return count;
-  }
-
-  /**
-   * 교사가 특정 날에 연속으로 배정된 교시 수 계산
-   */
-  protected countConsecutivePeriods(
-    timetable: TimetableData,
-    teacherId: string,
-    classId: string,
-    day: Day,
-    period: number
-  ): number {
-    const classSchedule = timetable.timetable[classId];
-    if (!classSchedule) return 0;
-
-    const daySchedule = classSchedule[day];
-    if (!daySchedule) return 0;
-
-    let count = 0;
-    const maxPeriod = timetable.schoolConfig.periodsPerDay[day];
-
-    // 앞쪽 연속 교시 확인
-    for (let p = period - 1; p >= 1; p--) {
-      const slot = daySchedule[p];
-      if (slot && (slot.teacherId === teacherId || slot.coTeachers?.includes(teacherId))) {
-        count++;
-      } else {
-        break;
-      }
-    }
-
-    // 뒤쪽 연속 교시 확인
-    for (let p = period + 1; p <= maxPeriod; p++) {
-      const slot = daySchedule[p];
-      if (slot && (slot.teacherId === teacherId || slot.coTeachers?.includes(teacherId))) {
-        count++;
-      } else {
-        break;
-      }
-    }
-
-    return count;
-  }
-
-  /**
-   * 안전한 데이터 접근 (에러 방지)
-   */
-  protected safeGet<T>(fn: () => T, defaultValue: T): T {
-    try {
-      return fn();
-    } catch (error) {
-      console.warn(`제약조건 평가 중 오류 발생 (${this.metadata.id}):`, error);
-      return defaultValue;
-    }
+    return { valid: true };
   }
 }

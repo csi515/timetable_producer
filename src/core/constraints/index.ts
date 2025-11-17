@@ -2,14 +2,15 @@
 
 export * from './types';
 export * from './BaseConstraint';
-export * from './TeacherAvailabilityConstraint';
-export * from './TeacherNoOverlapConstraint';
-export * from './ClassNoOverlapConstraint';
-export * from './MaxConsecutivePeriodsConstraint';
-export * from './MaxDailyLessonForTeacherConstraint';
-export * from './LunchBeforeOverloadConstraint';
-export * from './SpreadDistributionConstraint';
-export * from './ConsecutiveRequiredConstraint';
-export * from './MaxPerDayConstraint';
-export * from './SpecialRoomConflictConstraint';
+export * from './utils';
 export * from './ConstraintEngine';
+
+// 하드 제약조건
+export * from './hard/TeacherConstraints';
+export * from './hard/ClassConstraints';
+export * from './hard/SubjectConstraints';
+export * from './hard/FacilityConstraints';
+export * from './hard/SpecialProgramConstraints';
+
+// 소프트 제약조건
+export * from './soft/SoftConstraints';
