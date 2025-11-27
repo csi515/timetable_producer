@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useTimetableStore } from './store/timetableStore';
 import { useTimetable } from './hooks/useTimetable';
-import { ScheduleConfigInput } from './components/Input/ScheduleConfigInput';
-import { SubjectInput } from './components/Input/SubjectInput';
-import { TeacherInput } from './components/Input/TeacherInput';
+import { WizardContainer } from './components/Wizard/WizardContainer';
+import { Step1BasicConfig } from './components/Steps/Step1BasicConfig';
+import { Step2ClassConfig } from './components/Steps/Step2ClassConfig';
+import { Step3SubjectConfig } from './components/Steps/Step3SubjectConfig';
+import { Step4TeacherConfig } from './components/Steps/Step4TeacherConfig';
+import { Step5ConstraintsConfig } from './components/Steps/Step5ConstraintsConfig';
+import { Step6Review } from './components/Steps/Step6Review';
+import { Step7Generation } from './components/Steps/Step7Generation';
 import { TimetableView } from './components/Timetable/TimetableView';
 import { TimetableSelector } from './components/Timetable/TimetableSelector';
 import { TimetableComparison } from './components/Timetable/TimetableComparison';
@@ -15,22 +20,48 @@ import { useAdSense } from './hooks/useAdSense';
 function App() {
   const result = useTimetableStore((state) => state.result);
   const multipleResults = useTimetableStore((state) => state.multipleResults);
-  const isLoading = useTimetableStore((state) => state.isLoading);
+  const currentStep = useTimetableStore((state) => state.currentStep);
   const config = useTimetableStore((state) => state.config);
-  const { generate, generateMultiple, generateClasses } = useTimetable();
+  const { generateClasses } = useTimetable();
   const { loadAnchorAd } = useAdSense();
-  const [activeTab, setActiveTab] = useState<'input' | 'result'>('input');
+  const [activeTab, setActiveTab] = useState<'wizard' | 'result'>('wizard');
+
+  // 디버깅용
+  useEffect(() => {
+    console.log('App rendered:', { currentStep, activeTab, config: !!config });
+  }, [currentStep, activeTab, config]);
 
   useEffect(() => {
     loadAnchorAd();
-    if (config) {
-      generateClasses();
-    }
-  }, [config, loadAnchorAd, generateClasses]);
+    // Step2에서 학급을 직접 설정하므로 generateClasses는 호출하지 않음
+  }, [loadAnchorAd]);
 
-  const handleGenerate = async () => {
-    await generateMultiple(3);
-    setActiveTab('result');
+  // 시간표 생성 완료 시 결과 탭으로 이동
+  useEffect(() => {
+    if (multipleResults && multipleResults.results.length > 0) {
+      setActiveTab('result');
+    }
+  }, [multipleResults]);
+
+  const renderStep = () => {
+    switch (currentStep) {
+      case 1:
+        return <Step1BasicConfig />;
+      case 2:
+        return <Step2ClassConfig />;
+      case 3:
+        return <Step3SubjectConfig />;
+      case 4:
+        return <Step4TeacherConfig />;
+      case 5:
+        return <Step5ConstraintsConfig />;
+      case 6:
+        return <Step6Review />;
+      case 7:
+        return <Step7Generation />;
+      default:
+        return <Step1BasicConfig />;
+    }
   };
 
   return (
@@ -42,8 +73,8 @@ function App() {
       <main>
         <div className="tabs">
           <button
-            className={activeTab === 'input' ? 'active' : ''}
-            onClick={() => setActiveTab('input')}
+            className={activeTab === 'wizard' ? 'active' : ''}
+            onClick={() => setActiveTab('wizard')}
           >
             입력
           </button>
@@ -56,21 +87,10 @@ function App() {
           </button>
         </div>
 
-        {activeTab === 'input' && (
-          <div className="input-section">
-            <ScheduleConfigInput />
-            <SubjectInput />
-            <TeacherInput />
-            <div className="generate-section">
-              <button
-                onClick={handleGenerate}
-                disabled={isLoading || !config}
-                className="generate-button"
-              >
-                {isLoading ? '생성 중...' : '랜덤 시간표 3개 생성 (광고 시청 후)'}
-              </button>
-            </div>
-          </div>
+        {activeTab === 'wizard' && (
+          <WizardContainer>
+            {renderStep()}
+          </WizardContainer>
         )}
 
         {activeTab === 'result' && (

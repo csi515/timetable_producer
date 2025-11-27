@@ -181,7 +181,8 @@ export class Scheduler {
       selectedIndex: results.length > 0 ? 0 : undefined,
       generationAttempts,
       relaxationAttempts,
-      canRelax
+      canRelax,
+      relaxationSuggestions: [] // TODO: 실제 제안 생성 로직 추가
     };
   }
 

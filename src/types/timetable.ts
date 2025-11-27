@@ -47,6 +47,7 @@ export interface MultipleScheduleResult {
   generationAttempts: number;
   relaxationAttempts: number;
   canRelax: boolean;
+  relaxationSuggestions?: RelaxationSuggestion[];
 }
 
 export interface RelaxationSuggestion {

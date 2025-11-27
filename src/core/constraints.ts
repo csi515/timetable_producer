@@ -300,10 +300,10 @@ export const softConstraints: SoftConstraint[] = [
       let concentrationScore = 0;
       // 점심 전 교시(1-4교시)에 수업이 몰려있는지 확인
       for (const [key, periods] of classDays) {
-        const lunchPeriod = 5; // 기본 점심 시간
+        const lunchPeriod = 4; // 점심시간은 4교시와 5교시 사이
         const morningPeriods = Array.from(periods.keys())
           .map(p => parseInt(p))
-          .filter(p => p < lunchPeriod);
+          .filter(p => p <= lunchPeriod);
         
         if (morningPeriods.length > 3) {
           concentrationScore += morningPeriods.length - 3;
