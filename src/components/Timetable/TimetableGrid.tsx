@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -122,8 +122,20 @@ export const TimetableGrid: React.FC<TimetableGridProps> = ({
     useSensor(KeyboardSensor)
   );
 
+  // useMemo로 entries를 Map으로 변환하여 O(1) 조회 성능 개선
+  const entriesMap = useMemo(() => {
+    const map = new Map<string, TimetableEntry>();
+    entries.forEach(entry => {
+      if (entry.classId === classId) {
+        const key = `${entry.day}-${entry.period}`;
+        map.set(key, entry);
+      }
+    });
+    return map;
+  }, [entries, classId]);
+
   const getEntry = (day: string, period: number): TimetableEntry | undefined => {
-    return entries.find(e => e.classId === classId && e.day === day && e.period === period);
+    return entriesMap.get(`${day}-${period}`);
   };
 
   const getSubjectName = (subjectId: string): string => {

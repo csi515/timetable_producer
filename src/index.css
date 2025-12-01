@@ -569,3 +569,54 @@
     @apply bg-primary/20 border-primary/30;
   }
 }
+
+/* 인쇄 최적화 스타일 */
+@media print {
+
+  /* 인쇄 시 불필요한 요소 숨김 */
+  .wizard-header-minimal,
+  .step-navigation,
+  .tabs,
+  .generate-button-container,
+  .ad-container,
+  .template-button-minimal,
+  button,
+  footer {
+    display: none !important;
+  }
+
+  /* 배경색 및 그림자 제거 (잉크 절약 및 가독성) */
+  body {
+    background-color: white;
+  }
+
+  .app,
+  .wizard-container {
+    box-shadow: none;
+    max-width: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* 시간표 그리드 최적화 */
+  .timetable-view {
+    width: 100%;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .class-timetable {
+    page-break-inside: avoid;
+    /* 시간표가 페이지 중간에 잘리지 않도록 설정 */
+    margin-bottom: 20px;
+    border: 1px solid #ddd;
+  }
+
+  /* 폰트 크기 조정 */
+  .timetable-grid th,
+  .timetable-grid td {
+    font-size: 10pt;
+    padding: 4px;
+  }
+}
