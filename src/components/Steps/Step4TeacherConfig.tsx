@@ -17,6 +17,9 @@ export const Step4TeacherConfig: React.FC = () => {
   const [isExternal, setIsExternal] = useState(false);
   const [unavailableTimes, setUnavailableTimes] = useState<UnavailableTime[]>([]);
 
+  // [추가] 에러 메시지 상태
+  const [error, setError] = useState<string | null>(null);
+
   const days = config?.days || ['월', '화', '수', '목', '금'];
   const maxPeriods = config?.maxPeriodsPerDay || 7;
 
@@ -37,16 +40,17 @@ export const Step4TeacherConfig: React.FC = () => {
   };
 
   const handleAdd = () => {
+    // [수정] alert 대신 setError 사용
     if (!name.trim()) {
-      alert('교사명을 입력해주세요.');
+      setError('교사명을 입력해주세요.');
       return;
     }
     if (selectedSubjects.length === 0) {
-      alert('담당 과목을 최소 1개 이상 선택해주세요.');
+      setError('담당 과목을 최소 1개 이상 선택해주세요.');
       return;
     }
     if (teachers.some(t => t.name === name.trim())) {
-      alert('이미 등록된 교사입니다.');
+      setError('이미 등록된 교사입니다.');
       return;
     }
 
@@ -62,13 +66,14 @@ export const Step4TeacherConfig: React.FC = () => {
 
     setTeachers([...teachers, newTeacher]);
 
-    // 폼 초기화
+    // 초기화 및 성공 시 에러 제거
     setName('');
     setSelectedSubjects([]);
     setMaxWeeklyHours(20);
     setIsPriority(false);
     setIsExternal(false);
     setUnavailableTimes([]);
+    setError(null);
   };
 
   const handleDelete = (id: string) => {
@@ -197,6 +202,13 @@ export const Step4TeacherConfig: React.FC = () => {
               />
             </div>
 
+            {/* [추가] 에러 메시지 표시 영역 */}
+            {error && (
+              <div className="p-3 mb-2 text-sm text-red-600 bg-red-50 rounded-md border border-red-200 flex items-center gap-2">
+                <span>⚠️</span> {error}
+              </div>
+            )}
+
             <button onClick={handleAdd} className="modern-button primary">
               교사 추가
             </button>
@@ -301,4 +313,3 @@ export const Step4TeacherConfig: React.FC = () => {
     </div>
   );
 };
-
