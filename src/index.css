@@ -1,0 +1,571 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-sans bg-bg text-text-primary m-0 p-0;
+  }
+}
+
+@layer components {
+
+  /* Wizard Container & Header */
+  .wizard-container {
+    @apply max-w-[1000px] mx-auto p-5 min-h-screen flex flex-col;
+  }
+
+  .wizard-header-minimal {
+    @apply mb-8;
+  }
+
+  .header-content {
+    @apply flex justify-between items-center mb-5;
+  }
+
+  .app-title {
+    @apply text-2xl font-bold text-text-primary m-0;
+  }
+
+  .template-button-minimal {
+    @apply bg-white border border-border px-4 py-2 rounded-sm font-semibold text-text-secondary cursor-pointer transition-all duration-200;
+  }
+
+  .template-button-minimal:hover {
+    @apply bg-bg text-text-primary;
+  }
+
+  /* Modern Step Indicator */
+  .step-indicator-modern {
+    @apply relative py-2.5;
+  }
+
+  .step-progress-bar {
+    @apply absolute top-[25px] left-0 w-full h-0.5 bg-border z-0;
+  }
+
+  .step-progress-fill {
+    @apply h-full bg-primary transition-[width] duration-300 ease-out;
+  }
+
+  .steps-wrapper {
+    @apply flex justify-between relative z-10;
+  }
+
+  .step-item-modern {
+    @apply flex flex-col items-center cursor-pointer opacity-60 transition-all duration-200;
+  }
+
+  .step-item-modern.active,
+  .step-item-modern.completed {
+    @apply opacity-100;
+  }
+
+  .step-item-modern.disabled {
+    @apply cursor-not-allowed;
+  }
+
+  .step-circle {
+    @apply w-8 h-8 rounded-full bg-white border-2 border-border flex items-center justify-center font-semibold text-sm text-text-secondary mb-2 transition-all duration-200;
+  }
+
+  .step-item-modern.active .step-circle {
+    @apply border-primary bg-primary text-white ring-4 ring-primary/20;
+  }
+
+  .step-item-modern.completed .step-circle {
+    @apply bg-primary border-primary text-white;
+  }
+
+  .step-label {
+    @apply text-xs font-medium text-text-secondary;
+  }
+
+  .step-item-modern.active .step-label {
+    @apply text-primary font-bold;
+  }
+
+  /* Modern Step Content */
+  .modern-step-container {
+    @apply bg-transparent;
+  }
+
+  .step-header {
+    @apply mb-6 text-center;
+  }
+
+  .step-header h2 {
+    @apply text-2xl font-bold mb-2;
+  }
+
+  .step-description {
+    @apply text-text-secondary text-base;
+  }
+
+  /* Modern Tabs */
+  .modern-tabs {
+    @apply flex bg-white p-1 rounded-md shadow-sm mb-6 border border-border;
+  }
+
+  .modern-tab {
+    @apply flex-1 p-2.5 border-none bg-transparent rounded-sm font-semibold text-text-secondary cursor-pointer transition-all duration-200;
+  }
+
+  .modern-tab.active {
+    @apply bg-primary text-white shadow-sm;
+  }
+
+  /* Modern Config Card */
+  .modern-config-card {
+    @apply bg-white rounded-lg p-8 shadow-md border border-border;
+  }
+
+  .section-title {
+    @apply text-lg font-semibold mb-4 text-text-primary;
+  }
+
+  .section-hint {
+    @apply text-sm text-text-secondary mb-4;
+  }
+
+  .config-section {
+    @apply mb-8;
+  }
+
+  .config-section:last-child {
+    @apply mb-0;
+  }
+
+  /* Day Toggles */
+  .day-toggles {
+    @apply flex gap-3 flex-wrap;
+  }
+
+  .day-toggle {
+    @apply flex items-center justify-center w-[60px] h-[40px] border border-border rounded-sm cursor-pointer transition-all duration-200 font-medium text-text-secondary;
+  }
+
+  .day-toggle:hover {
+    @apply bg-bg;
+  }
+
+  .day-toggle.active {
+    @apply bg-primary/10 border-primary text-primary font-semibold;
+  }
+
+  /* Modern Grid */
+  .modern-grid-container {
+    @apply overflow-x-auto;
+  }
+
+  .modern-grid {
+    @apply w-full border-separate border-spacing-2;
+  }
+
+  .col-header {
+    @apply text-sm text-text-secondary font-medium pb-2;
+  }
+
+  .row-label {
+    @apply font-semibold text-text-primary w-[60px];
+  }
+
+  .modern-cell {
+    @apply h-12 bg-bg rounded-sm cursor-pointer transition-all duration-200 relative border border-transparent;
+  }
+
+  .modern-cell:hover {
+    @apply border-primary;
+  }
+
+  .modern-cell.active {
+    @apply bg-primary shadow-[0_2px_4px_rgba(24, 160, 251, 0.3)];
+  }
+
+  .cell-indicator {
+    @apply block w-full h-full;
+  }
+
+  /* Step Navigation Buttons */
+  .step-navigation {
+    @apply mt-8 flex justify-between;
+  }
+
+  .nav-button {
+    @apply px-6 py-3 rounded-sm font-semibold cursor-pointer transition-all duration-200 border-none;
+  }
+
+  .nav-button.prev {
+    @apply bg-white border border-border text-text-secondary;
+  }
+
+  .nav-button.prev:hover {
+    @apply bg-bg text-text-primary;
+  }
+
+  .nav-button.next {
+    @apply bg-primary text-white shadow-[0_2px_4px_rgba(24, 160, 251, 0.3)];
+  }
+
+  .nav-button.next:hover {
+    @apply bg-primary-hover -translate-y-px;
+  }
+
+  .nav-button:disabled {
+    @apply opacity-50 cursor-not-allowed transform-none;
+  }
+
+  /* Modern Form Elements */
+  .modern-form {
+    @apply flex flex-col gap-5;
+  }
+
+  .modern-input-group {
+    @apply flex flex-col gap-2;
+  }
+
+  .modern-label {
+    @apply font-semibold text-sm text-text-primary;
+  }
+
+  .modern-input {
+    @apply px-3.5 py-2.5 border border-border rounded-sm text-sm transition-all duration-200 bg-white;
+  }
+
+  .modern-input:focus {
+    @apply outline-none border-primary ring-4 ring-primary/10;
+  }
+
+  .modern-select {
+    @apply px-3.5 py-2.5 border border-border rounded-sm text-sm bg-white cursor-pointer transition-all duration-200;
+  }
+
+  .modern-select:focus {
+    @apply outline-none border-primary;
+  }
+
+  .input-hint-modern {
+    @apply text-xs text-text-secondary;
+  }
+
+  .required {
+    @apply text-error;
+  }
+
+  /* Modern Checkbox */
+  .modern-checkbox-group {
+    @apply flex flex-col gap-2;
+  }
+
+  .modern-checkbox {
+    @apply flex items-center gap-2.5 cursor-pointer text-sm text-text-primary;
+  }
+
+  .modern-checkbox input[type="checkbox"] {
+    @apply w-[18px] h-[18px] cursor-pointer accent-primary;
+  }
+
+  .nested-input {
+    @apply ml-7 mt-2;
+  }
+
+  .nested-checkbox {
+    @apply ml-7 mt-1;
+  }
+
+  /* Modern Buttons */
+  .modern-button {
+    @apply px-6 py-3 rounded-sm font-semibold text-sm cursor-pointer transition-all duration-200 border-none;
+  }
+
+  .modern-button.primary {
+    @apply bg-primary text-white shadow-[0_2px_4px_rgba(24, 160, 251, 0.3)];
+  }
+
+  .modern-button.primary:hover {
+    @apply bg-primary-hover -translate-y-px shadow-[0_4px_8px_rgba(24, 160, 251, 0.4)];
+  }
+
+  .modern-button.secondary {
+    @apply bg-white border border-border text-text-secondary;
+  }
+
+  .modern-button.secondary:hover {
+    @apply bg-bg text-text-primary;
+  }
+
+  .modern-button-small {
+    @apply px-3 py-1.5 rounded-sm text-xs font-semibold cursor-pointer transition-all duration-200 border-none;
+  }
+
+  .modern-button-small.delete {
+    @apply bg-transparent text-error border border-error;
+  }
+
+  .modern-button-small.delete:hover {
+    @apply bg-error text-white;
+  }
+
+  /* Grade Inputs */
+  .grade-inputs {
+    @apply grid grid-cols-3 gap-4;
+  }
+
+  /* Modern Class Grid */
+  .modern-class-grid {
+    @apply grid grid-cols-[repeat(auto-fill, minmax(120px, 1fr))] gap-3 mb-4;
+  }
+
+  .modern-class-tag {
+    @apply p-2.5 bg-bg border border-border rounded-sm text-center font-medium text-sm text-text-primary;
+  }
+
+  .summary-box {
+    @apply p-3 bg-primary/10 rounded-sm text-center text-primary text-sm;
+  }
+
+  .empty-state {
+    @apply p-10 text-center text-text-secondary bg-bg rounded-sm;
+  }
+
+  /* Modern List Grid */
+  .modern-list-grid {
+    @apply flex flex-col gap-3;
+  }
+
+  .modern-list-item {
+    @apply p-4 bg-bg border border-border rounded-sm transition-all duration-200;
+  }
+
+  .modern-list-item:hover {
+    @apply border-primary shadow-sm;
+  }
+
+  .modern-list-item .item-header {
+    @apply flex justify-between items-center mb-2;
+  }
+
+  .modern-list-item .item-details {
+    @apply flex flex-wrap gap-2 items-center;
+  }
+
+  .detail-text {
+    @apply text-sm text-text-secondary;
+  }
+
+  .modern-badge {
+    @apply px-2.5 py-1 bg-primary/10 text-primary rounded-xl text-xs font-medium;
+  }
+
+  .badge-small {
+    @apply px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded text-[10px] ml-1;
+  }
+
+  /* Review Sections */
+  .review-sections {
+    @apply flex flex-col gap-5;
+  }
+
+  .review-section {
+    @apply bg-white p-6 rounded-lg border border-border;
+  }
+
+  .review-section h3 {
+    @apply mt-0 mb-4 text-lg text-text-primary;
+  }
+
+  .review-item {
+    @apply flex justify-between py-2.5 border-b border-bg;
+  }
+
+  .review-label {
+    @apply font-medium text-text-secondary;
+  }
+
+  .review-value {
+    @apply font-semibold text-text-primary;
+  }
+
+  /* Analysis Cards */
+  .analysis-summary {
+    @apply bg-white p-6 rounded-lg border border-border mb-6;
+  }
+
+  .analysis-grid {
+    @apply grid grid-cols-2 gap-5;
+  }
+
+  .analysis-card {
+    @apply bg-bg p-4 rounded-md;
+  }
+
+  .stat-row {
+    @apply flex justify-between mb-2;
+  }
+
+  /* Generation Page */
+  .generation-settings {
+    @apply bg-white p-6 rounded-lg border border-border mb-5;
+  }
+
+  .generate-button-container {
+    @apply text-center my-8;
+  }
+
+  .generate-button {
+    @apply px-12 py-4 bg-primary text-white border-none rounded-md text-lg font-bold cursor-pointer transition-all duration-300 shadow-[0_4px_12px_rgba(24, 160, 251, 0.3)];
+  }
+
+  .generate-button:hover:not(:disabled) {
+    @apply bg-primary-hover -translate-y-0.5 shadow-[0_6px_16px_rgba(24, 160, 251, 0.4)];
+  }
+
+  .generate-button:disabled {
+    @apply opacity-60 cursor-not-allowed;
+  }
+
+  .generation-success,
+  .generation-error {
+    @apply p-6 rounded-lg text-center;
+  }
+
+  .generation-success {
+    @apply bg-success/10 border border-success text-success;
+  }
+
+  .generation-error {
+    @apply bg-error/10 border border-error text-error;
+  }
+
+  /* Constraints Page */
+  .constraints-summary {
+    @apply flex flex-col gap-6;
+  }
+
+  .constraint-section {
+    @apply bg-white p-6 rounded-lg border border-border;
+  }
+
+  .constraint-list {
+    @apply flex flex-col gap-3 mb-4;
+  }
+
+  .constraint-item {
+    @apply flex items-center gap-3 p-3 bg-bg rounded-sm;
+  }
+
+  .constraint-note {
+    @apply text-sm text-text-secondary italic;
+  }
+
+  .no-constraints {
+    @apply p-10 text-center bg-bg rounded-lg;
+  }
+
+  .constraint-info {
+    @apply bg-white p-6 rounded-lg border border-border;
+  }
+
+  .constraint-info ol {
+    @apply my-4 pl-6;
+  }
+
+  .constraint-info li {
+    @apply mb-2 text-text-secondary;
+  }
+
+  /* Step 4 Specific Styles */
+  .subject-selector-modern {
+    @apply flex flex-wrap gap-3;
+  }
+
+  .unavailable-times-list {
+    @apply flex flex-wrap gap-3;
+  }
+
+  .unavailable-time-tag {
+    @apply flex items-center gap-2 px-3 py-2 bg-bg border border-border rounded-sm text-sm text-text-primary;
+  }
+
+  /* Modern Timetable Grid */
+  .time-grid-selector-modern {
+    @apply flex flex-col gap-4;
+  }
+
+  .grid-controls-modern {
+    @apply flex gap-2 items-center mb-2;
+  }
+
+  .control-button {
+    @apply px-3 py-1.5 bg-white border border-border rounded-sm text-xs font-semibold cursor-pointer transition-all duration-200 hover:bg-bg hover:text-text-primary;
+  }
+
+  .time-summary {
+    @apply ml-auto text-xs text-text-secondary;
+  }
+
+  .modern-timetable {
+    @apply overflow-x-auto bg-white border border-border rounded-sm;
+  }
+
+  .timetable-grid {
+    @apply w-full border-collapse;
+  }
+
+  .timetable-grid th,
+  .timetable-grid td {
+    @apply border border-border p-0 text-center text-sm h-10;
+  }
+
+  .corner-cell {
+    @apply bg-bg font-semibold text-text-secondary w-20;
+  }
+
+  .day-header {
+    @apply bg-bg font-semibold text-text-primary;
+  }
+
+  .period-header {
+    @apply bg-bg font-semibold text-text-primary w-16;
+  }
+
+  .timetable-cell {
+    @apply cursor-pointer transition-all duration-200 hover:bg-bg;
+  }
+
+  .timetable-cell.available {
+    @apply bg-white text-transparent;
+  }
+
+  .timetable-cell.unavailable {
+    @apply bg-error/10 text-error font-bold;
+  }
+
+  .timetable-cell.fixed-time {
+    @apply bg-primary/20 text-primary font-bold;
+  }
+
+  .grid-legend {
+    @apply flex gap-4 mt-2;
+  }
+
+  .legend-item {
+    @apply flex items-center gap-2 text-xs text-text-secondary;
+  }
+
+  .legend-box {
+    @apply w-4 h-4 border border-border rounded-sm;
+  }
+
+  .legend-box.available {
+    @apply bg-white;
+  }
+
+  .legend-box.unavailable {
+    @apply bg-error/10 border-error/30;
+  }
+
+  .legend-box.fixed-time {
+    @apply bg-primary/20 border-primary/30;
+  }
+}
