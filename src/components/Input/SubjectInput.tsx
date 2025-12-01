@@ -15,6 +15,15 @@ export const SubjectInput: React.FC = () => {
   const [isCoTeaching, setIsCoTeaching] = useState(false);
   const [isExternalInstructor, setIsExternalInstructor] = useState(false);
   const [preferConcentrated, setPreferConcentrated] = useState(false);
+  const [targetGrades, setTargetGrades] = useState<number[]>([1, 2, 3]);
+
+  const handleGradeToggle = (grade: number) => {
+    setTargetGrades(prev =>
+      prev.includes(grade)
+        ? prev.filter(g => g !== grade)
+        : [...prev, grade].sort()
+    );
+  };
 
   const handleAdd = () => {
     if (!name) {
@@ -34,7 +43,7 @@ export const SubjectInput: React.FC = () => {
       coTeachingTeachers: isCoTeaching ? [] : undefined,
       isExternalInstructor,
       preferConcentrated: isExternalInstructor ? preferConcentrated : false,
-      targetGrades: [1, 2, 3], // 기본값 설정
+      targetGrades,
       priority: 100
     };
 
@@ -50,6 +59,7 @@ export const SubjectInput: React.FC = () => {
     setIsCoTeaching(false);
     setIsExternalInstructor(false);
     setPreferConcentrated(false);
+    setTargetGrades([1, 2, 3]);
   };
 
   const handleDelete = (id: string) => {
@@ -78,6 +88,21 @@ export const SubjectInput: React.FC = () => {
             value={weeklyHours}
             onChange={(e) => setWeeklyHours(parseInt(e.target.value))}
           />
+        </div>
+        <div className="input-group">
+          <label>대상 학년:</label>
+          <div className="flex gap-4">
+            {[1, 2, 3].map(grade => (
+              <label key={grade} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={targetGrades.includes(grade)}
+                  onChange={() => handleGradeToggle(grade)}
+                />
+                {grade}학년
+              </label>
+            ))}
+          </div>
         </div>
         <div className="input-group">
           <label>
@@ -159,6 +184,7 @@ export const SubjectInput: React.FC = () => {
               <li key={subject.id}>
                 <span>{subject.name}</span>
                 <span>시수: {subject.weeklyHours}</span>
+                <span>대상: {subject.targetGrades.join(', ')}학년</span>
                 {subject.requiresSpecialRoom && <span>특별실: {subject.specialRoomType}</span>}
                 {subject.isBlockClass && <span>블록: {subject.blockHours}교시</span>}
                 <button onClick={() => handleDelete(subject.id)}>삭제</button>

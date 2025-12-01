@@ -38,13 +38,15 @@ export const TeacherInput: React.FC = () => {
     setUnavailableTimes(unavailableTimes.filter((_, i) => i !== index));
   };
 
+  const [error, setError] = useState<string | null>(null);
+
   const handleAdd = () => {
     if (!name) {
-      alert('교사명을 입력해주세요.');
+      setError('교사명을 입력해주세요.');
       return;
     }
     if (selectedSubjects.length === 0) {
-      alert('담당 과목을 선택해주세요.');
+      setError('담당 과목을 선택해주세요.');
       return;
     }
 
@@ -67,6 +69,7 @@ export const TeacherInput: React.FC = () => {
     setIsPriority(false);
     setIsExternal(false);
     setUnavailableTimes([]);
+    setError(null);
   };
 
   const handleDelete = (id: string) => {
@@ -163,6 +166,7 @@ export const TeacherInput: React.FC = () => {
             </ul>
           )}
         </div>
+        {error && <div className="text-red-500 text-sm mb-2">{error}</div>}
         <button onClick={handleAdd}>교사 추가</button>
       </div>
 
