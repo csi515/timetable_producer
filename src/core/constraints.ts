@@ -63,7 +63,7 @@ export const criticalConstraints: Constraint[] = [
 
       return conflictingEntries.length === 0;
     },
-    message: (entry) => `특별실이 ${entry.day}요일 ${entry.period}교시에 중복 사용됨`
+    message: (entry) => `특별실(${entry.roomId})이 ${entry.day}요일 ${entry.period}교시에 중복 사용됨 - CRITICAL`
   },
   {
     type: ConstraintType.CRITICAL,
@@ -124,24 +124,40 @@ export const highConstraints: Constraint[] = [
     name: '외부 강사 하루 몰아넣기',
     check: (entry, allEntries, subjects, teachers) => {
       const subject = subjects.find(s => s.id === entry.subjectId);
-      if (!subject || !subject.isExternalInstructor || !subject.preferConcentrated) {
+
+      // preferConcentrated가 설정되지 않았으면 체크하지 않음
+      if (!subject || !subject.preferConcentrated) {
         return true;
       }
 
-      // 외부 강사의 모든 수업이 같은 날에 있는지 확인
-      const teacher = teachers.find(t => t.id === entry.teacherId);
-      if (!teacher || !teacher.isExternal) return true;
+      // 외부 강사인지 확인
+      const teacherIds = entry.teacherIds || [entry.teacherId];
+      let hasExternalTeacher = false;
 
-      const allTeacherEntries = allEntries.filter(
-        e => (e.teacherIds || [e.teacherId]).includes(entry.teacherId)
-      );
+      for (const teacherId of teacherIds) {
+        const teacher = teachers.find(t => t.id === teacherId);
+        if (teacher && teacher.isExternal) {
+          hasExternalTeacher = true;
 
-      if (allTeacherEntries.length === 0) return true;
+          // 해당 외부 강사의 모든 수업 찾기
+          const allTeacherEntries = allEntries.filter(
+            e => (e.teacherIds || [e.teacherId]).includes(teacherId)
+          );
 
-      const days = new Set(allTeacherEntries.map(e => e.day));
-      return days.size === 1; // 모든 수업이 같은 날에 있어야 함
+          if (allTeacherEntries.length <= 1) return true; // 수업이 1개 이하면 통과
+
+          // 모든 수업이 같은 날에 있는지 확인
+          const days = new Set(allTeacherEntries.map(e => e.day));
+
+          if (days.size > 1) {
+            return false; // 여러 날에 분산되어 있으면 위반
+          }
+        }
+      }
+
+      return true;
     },
-    message: (entry) => `외부 강사의 수업이 하루에 몰아서 배치되지 않음`
+    message: (entry) => `외부 강사의 수업이 하루에 몰아서 배치되지 않음 (${entry.day}요일)`
   },
   {
     type: ConstraintType.HIGH,
@@ -154,7 +170,7 @@ export const highConstraints: Constraint[] = [
         if (!teacher) continue;
 
         // maxDailyHours가 설정되어 있으면 확인 (기본값: 6)
-        const maxDailyHours = teacher.maxDailyHours || 6;
+        const maxDailyHours = teacher.maxDailyHours ?? 6;
 
         // 같은 날 해당 교사의 총 수업 시간 계산
         const sameDayEntries = allEntries.filter(e =>
@@ -170,8 +186,8 @@ export const highConstraints: Constraint[] = [
       return true;
     },
     message: (entry) => {
-      const teacher = entry.teacherId; // simplified
-      return `교사가 ${entry.day}요일에 하루 최대 시수를 초과함`;
+      const teacherIds = entry.teacherIds || [entry.teacherId];
+      return `${entry.day}요일에 교사(${teacherIds.join(', ')})가 하루 최대 시수 초과`;
     }
   }
 ];
@@ -192,25 +208,28 @@ export const mediumConstraints: Constraint[] = [
       for (const teacherId of teacherIds) {
         const sameDayEntries = allEntries.filter(
           e => (e.teacherIds || [e.teacherId]).includes(teacherId) &&
-            e.day === entry.day &&
-            e.id !== entry.id
+            e.day === entry.day
         ).sort((a, b) => a.period - b.period);
 
+        // 모든 교시를 배열로 추출
+        const periods = sameDayEntries.map(e => e.period);
+
         // 연속된 교시가 3개 이상인지 확인
-        let consecutiveCount = 1;
-        for (let i = 0; i < sameDayEntries.length; i++) {
-          if (sameDayEntries[i].period === entry.period - 1 ||
-            sameDayEntries[i].period === entry.period + 1) {
-            consecutiveCount++;
+        for (let i = 0; i < periods.length - 2; i++) {
+          // 3개 연속 체크: i, i+1, i+2가 연속인지
+          if (periods[i + 1] === periods[i] + 1 &&
+            periods[i + 2] === periods[i] + 2) {
+            // 현재 entry가 이 연속 구간에 포함되는지 확인
+            if (entry.period >= periods[i] && entry.period <= periods[i + 2]) {
+              return false;
+            }
           }
         }
-
-        if (consecutiveCount >= 3) return false;
       }
 
       return true;
     },
-    message: (entry) => `같은 교사가 연속 3교시 이상 배정됨`
+    message: (entry) => `${entry.day}요일 ${entry.period}교시 - 같은 교사가 연속 3교시 이상 배정됨`
   },
   {
     type: ConstraintType.MEDIUM,
