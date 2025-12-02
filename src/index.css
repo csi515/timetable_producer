@@ -179,7 +179,7 @@
   }
 
   .modern-cell.active {
-    @apply bg-primary shadow-[0_2px_4px_rgba(24, 160, 251, 0.3)];
+    @apply bg-primary shadow-[0_2px_4px_rgba(24_160_251_0.3)];
   }
 
   .cell-indicator {
@@ -204,7 +204,7 @@
   }
 
   .nav-button.next {
-    @apply bg-primary text-white shadow-[0_2px_4px_rgba(24, 160, 251, 0.3)];
+    @apply bg-primary text-white shadow-[0_2px_4px_rgba(24_160_251_0.3)];
   }
 
   .nav-button.next:hover {
@@ -279,11 +279,11 @@
   }
 
   .modern-button.primary {
-    @apply bg-primary text-white shadow-[0_2px_4px_rgba(24, 160, 251, 0.3)];
+    @apply bg-primary text-white shadow-[0_2px_4px_rgba(24_160_251_0.3)];
   }
 
   .modern-button.primary:hover {
-    @apply bg-primary-hover -translate-y-px shadow-[0_4px_8px_rgba(24, 160, 251, 0.4)];
+    @apply bg-primary-hover -translate-y-px shadow-[0_4px_8px_rgba(24_160_251_0.4)];
   }
 
   .modern-button.secondary {
@@ -313,7 +313,7 @@
 
   /* Modern Class Grid */
   .modern-class-grid {
-    @apply grid grid-cols-[repeat(auto-fill, minmax(120px, 1fr))] gap-3 mb-4;
+    @apply grid grid-cols-[repeat(auto-fill_minmax(120px_1fr))] gap-3 mb-4;
   }
 
   .modern-class-tag {
@@ -413,11 +413,11 @@
   }
 
   .generate-button {
-    @apply px-12 py-4 bg-primary text-white border-none rounded-md text-lg font-bold cursor-pointer transition-all duration-300 shadow-[0_4px_12px_rgba(24, 160, 251, 0.3)];
+    @apply px-12 py-4 bg-primary text-white border-none rounded-md text-lg font-bold cursor-pointer transition-all duration-300 shadow-[0_4px_12px_rgba(24_160_251_0.3)];
   }
 
   .generate-button:hover:not(:disabled) {
-    @apply bg-primary-hover -translate-y-0.5 shadow-[0_6px_16px_rgba(24, 160, 251, 0.4)];
+    @apply bg-primary-hover -translate-y-0.5 shadow-[0_6px_16px_rgba(24_160_251_0.4)];
   }
 
   .generate-button:disabled {
