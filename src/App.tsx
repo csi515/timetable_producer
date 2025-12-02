@@ -18,9 +18,6 @@ import { StatisticsDisplay } from './components/Common/StatisticsDisplay';
 import { calculateTeacherWorkload, calculateClassDistribution } from './utils/statistics';
 import { ExportButtons } from './components/Export/ExportButtons';
 import { useAdSense } from './hooks/useAdSense';
-import { TemplateManager } from './components/Templates/TemplateManager';
-
-
 import { PrivacyPolicy } from './components/Common/PrivacyPolicy';
 
 function App() {
@@ -33,7 +30,6 @@ function App() {
   const { generateClasses } = useTimetable();
   const { loadAnchorAd } = useAdSense();
   const [activeTab, setActiveTab] = useState<'wizard' | 'result'>('wizard');
-  const [showTemplateManager, setShowTemplateManager] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
 
 
@@ -53,13 +49,6 @@ function App() {
       setActiveTab('result');
     }
   }, [multipleResults]);
-
-  // 템플릿 관리 모달 열기 이벤트 리스너
-  useEffect(() => {
-    const handleOpenTemplateManager = () => setShowTemplateManager(true);
-    document.addEventListener('openTemplateManager', handleOpenTemplateManager);
-    return () => document.removeEventListener('openTemplateManager', handleOpenTemplateManager);
-  }, []);
 
   const renderStep = () => {
     switch (currentStep) {
@@ -161,12 +150,6 @@ function App() {
           개인정보처리방침
         </button>
       </footer>
-
-      {/* 템플릿 관리 모달 */}
-      <TemplateManager
-        isOpen={showTemplateManager}
-        onClose={() => setShowTemplateManager(false)}
-      />
 
       {/* 개인정보처리방침 모달 */}
       <PrivacyPolicy

@@ -12,6 +12,7 @@ export const Step1BasicConfig: React.FC = () => {
   const setStepValidation = useTimetableStore((state) => state.setStepValidation);
 
   const [activeGrade, setActiveGrade] = useState<number>(1);
+  const [isGuideExpanded, setIsGuideExpanded] = useState<boolean>(false);
 
   // 학년별 설정 상태 관리
   const [gradeConfigs, setGradeConfigs] = useState<{ [grade: number]: DailyScheduleConfig }>({
@@ -73,16 +74,22 @@ export const Step1BasicConfig: React.FC = () => {
   };
 
   const handlePeriodClick = (grade: number, day: string, period: number) => {
-    setGradeConfigs(prev => ({
-      ...prev,
-      [grade]: {
-        ...prev[grade],
-        dailyMaxPeriods: {
-          ...prev[grade].dailyMaxPeriods,
-          [day]: period
+    setGradeConfigs(prev => {
+      const currentMaxPeriod = prev[grade].dailyMaxPeriods[day] || 7;
+      // 이미 선택된 교시를 다시 클릭하면 이전 교시로 변경 (토글)
+      const newMaxPeriod = currentMaxPeriod === period ? Math.max(1, period - 1) : period;
+      
+      return {
+        ...prev,
+        [grade]: {
+          ...prev[grade],
+          dailyMaxPeriods: {
+            ...prev[grade].dailyMaxPeriods,
+            [day]: newMaxPeriod
+          }
         }
-      }
-    }));
+      };
+    });
   };
 
   return (
@@ -217,8 +224,12 @@ export const Step1BasicConfig: React.FC = () => {
 
       {/* 사용 가이드 섹션 - AdSense 가치 있는 인벤토리 정책 준수 */}
       <div className="modern-config-card mt-8">
-        <h3 className="section-title">📖 시간표 생성기 사용 가이드</h3>
+        <div className="flex justify-between items-center cursor-pointer" onClick={() => setIsGuideExpanded(!isGuideExpanded)}>
+          <h3 className="section-title mb-0">📖 시간표 생성기 사용 가이드</h3>
+          <span className="text-text-secondary text-lg">{isGuideExpanded ? '▼' : '▶'}</span>
+        </div>
 
+        {isGuideExpanded && (
         <div className="config-section">
           <h4 className="text-lg font-semibold mb-3">프로그램 사용 방법</h4>
           <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
@@ -291,6 +302,7 @@ export const Step1BasicConfig: React.FC = () => {
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

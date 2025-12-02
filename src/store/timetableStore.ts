@@ -6,6 +6,12 @@ import { Subject } from '../types/subject';
 import { Teacher } from '../types/teacher';
 import type { SchedulerWorker } from '../core/worker';
 
+interface GenerationLog {
+  timestamp: number;
+  message: string;
+  type?: 'info' | 'success' | 'warning' | 'error';
+}
+
 interface TimetableStore {
   config: ScheduleConfig | null;
   classes: ClassInfo[];
@@ -15,6 +21,8 @@ interface TimetableStore {
   multipleResults: MultipleScheduleResult | null;
   selectedResultIndex: number | null;
   isLoading: boolean;
+  isCancelled: boolean;
+  generationLogs: GenerationLog[];
   // Wizard 단계 관리
   currentStep: number;
   maxStep: number;
@@ -27,6 +35,9 @@ interface TimetableStore {
   setMultipleResults: (results: MultipleScheduleResult | null) => void;
   setSelectedResultIndex: (index: number | null) => void;
   setLoading: (loading: boolean) => void;
+  addGenerationLog: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
+  clearGenerationLogs: () => void;
+  cancelGeneration: () => void;
   setCurrentStep: (step: number) => void;
   nextStep: () => void;
   prevStep: () => void;
@@ -49,6 +60,8 @@ export const useTimetableStore = create<TimetableStore>()(
       multipleResults: null,
       selectedResultIndex: null,
       isLoading: false,
+      isCancelled: false,
+      generationLogs: [],
       currentStep: 1,
       maxStep: 7,
       stepValidation: {},
@@ -76,6 +89,17 @@ export const useTimetableStore = create<TimetableStore>()(
         });
       },
       setLoading: (isLoading) => set({ isLoading }),
+      addGenerationLog: (message, type = 'info') => {
+        const state = get();
+        set({
+          generationLogs: [
+            ...state.generationLogs,
+            { timestamp: Date.now(), message, type }
+          ]
+        });
+      },
+      clearGenerationLogs: () => set({ generationLogs: [] }),
+      cancelGeneration: () => set({ isCancelled: true }),
       setCurrentStep: (step) => {
         const state = get();
         if (step >= 1 && step <= state.maxStep) {
@@ -136,6 +160,8 @@ export const useTimetableStore = create<TimetableStore>()(
         multipleResults: null,
         selectedResultIndex: null,
         isLoading: false,
+        isCancelled: false,
+        generationLogs: [],
         currentStep: 1,
         stepValidation: {}
       }),
@@ -143,14 +169,48 @@ export const useTimetableStore = create<TimetableStore>()(
         const state = get();
         if (!state.config) return;
 
-        set({ isLoading: true });
+        set({ 
+          isLoading: true, 
+          isCancelled: false, 
+          generationLogs: [],
+          multipleResults: null 
+        });
+
+        let worker: Worker | null = null;
 
         try {
-          const worker = new Worker(new URL('../core/worker.ts', import.meta.url), {
+          worker = new Worker(new URL('../core/worker.ts', import.meta.url), {
             type: 'module'
           });
 
+          // 로그 수신 리스너
+          worker.addEventListener('message', (event) => {
+            if (event.data.type === 'log') {
+              get().addGenerationLog(event.data.message, event.data.logType);
+            }
+          });
+
           const workerApi = wrap<SchedulerWorker>(worker);
+
+          // 중단 체크를 위한 인터벌
+          const checkCancelInterval = setInterval(() => {
+            if (get().isCancelled) {
+              clearInterval(checkCancelInterval);
+              if (worker) {
+                worker.terminate();
+              }
+              set({ 
+                isLoading: false,
+                generationLogs: [
+                  ...get().generationLogs,
+                  { timestamp: Date.now(), message: '사용자에 의해 생성이 중단되었습니다.', type: 'warning' }
+                ]
+              });
+            }
+          }, 100);
+
+          get().addGenerationLog(`시간표 ${minCount}개 생성 시작...`, 'info');
+          get().addGenerationLog(`최대 ${maxAttempts}번 시도합니다.`, 'info');
 
           // 생성 시도
           const result = await workerApi.runSchedulerMultiple(
@@ -159,8 +219,23 @@ export const useTimetableStore = create<TimetableStore>()(
             state.teachers,
             state.classes,
             minCount,
-            maxAttempts
+            maxAttempts,
+            () => get().isCancelled // 취소 체크 함수
           );
+
+          clearInterval(checkCancelInterval);
+
+          if (get().isCancelled) {
+            return;
+          }
+
+          if (result.results.length > 0) {
+            get().addGenerationLog(`✅ ${result.results.length}개의 시간표 생성 완료!`, 'success');
+            get().addGenerationLog(`총 ${result.generationAttempts}번 시도했습니다.`, 'info');
+          } else {
+            get().addGenerationLog(`⚠️ 시간표 생성에 실패했습니다.`, 'error');
+            get().addGenerationLog(`제약조건을 완화하거나 설정을 조정해주세요.`, 'warning');
+          }
 
           set({
             multipleResults: result,
@@ -169,14 +244,16 @@ export const useTimetableStore = create<TimetableStore>()(
             isLoading: false
           });
 
-          // 워커 종료는 필요에 따라 처리 (여기서는 일회용으로 사용하고 GC에 맡기거나 명시적 terminate 가능)
-          // worker.terminate(); // comlink wrap된 경우 직접 terminate하기 까다로울 수 있음.
-          // 하지만 wrap된 객체에는 terminate가 없음. worker 인스턴스를 terminate 해야 함.
-          // 비동기 완료 후 terminate
-          // worker.terminate(); 
+          if (worker) {
+            worker.terminate();
+          }
         } catch (error) {
           console.error('Schedule generation failed:', error);
+          get().addGenerationLog(`❌ 오류 발생: ${error instanceof Error ? error.message : '알 수 없는 오류'}`, 'error');
           set({ isLoading: false });
+          if (worker) {
+            worker.terminate();
+          }
         }
       },
       updateEntry: (updatedEntry) => {

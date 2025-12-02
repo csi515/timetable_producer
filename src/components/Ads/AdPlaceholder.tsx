@@ -71,7 +71,7 @@ export const AdPlaceholder: React.FC<AdPlaceholderProps> = ({ type, className = 
     if (type === 'interstitial') {
         return (
             <div
-                className={`bg-black/80 flex items-center justify-center fixed top-0 left-0 z-50 ${className}`}
+                className={`bg-gray-800/70 flex items-center justify-center fixed top-0 left-0 z-50 ${className}`}
                 style={{ minHeight: dimensions.minHeight, width: dimensions.width }}
             >
                 <div className="bg-white p-8 rounded-lg max-w-md text-center">

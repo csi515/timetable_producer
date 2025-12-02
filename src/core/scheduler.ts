@@ -60,16 +60,22 @@ export class Scheduler {
     };
   }
 
-  generateWithRetry(maxRetries: number = 10): ScheduleResult {
+  generateWithRetry(
+    maxRetries: number = 10,
+    log?: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void
+  ): ScheduleResult {
     let bestResult: ScheduleResult | null = null;
     let bestScore = Infinity;
 
     for (let i = 0; i < maxRetries; i++) {
+      if (log) log(`시도 ${i + 1}/${maxRetries}...`);
+      
       const randomSeed = Math.random() * 1000000;
       const cspSolver = new CSPSolver(this.config, this.subjects, this.teachers, this.classes, randomSeed);
       let entries = cspSolver.solve();
 
       if (entries.length > 0) {
+        if (log) log(`  → 초기 해결 완료 (${entries.length}개 항목)`);
         entries = optimizer.optimize(entries, this.subjects, this.teachers, this.config, this.classes);
         const validator = new ConstraintValidator(entries, this.subjects, this.teachers, this.classes);
         const violations = validator.validateAll();
@@ -91,15 +97,25 @@ export class Scheduler {
           if (result.score < bestScore) {
             bestResult = result;
             bestScore = result.score;
+            if (log) log(`  ✅ 더 나은 해 발견 (점수: ${score.toFixed(2)})`, 'success');
           }
+        } else {
+          if (log) log(`  ⚠️ Critical 위반 ${criticalViolations.length}개`, 'warning');
         }
+      } else {
+        if (log) log(`  ❌ 해결 실패`, 'warning');
       }
     }
 
     return bestResult || this.generate();
   }
 
-  generateMultiple(minCount: number = 3, maxAttempts: number = 50): MultipleScheduleResult {
+  generateMultiple(
+    minCount: number = 3,
+    maxAttempts: number = 50,
+    log?: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void,
+    shouldCancel?: () => boolean
+  ): MultipleScheduleResult {
     const results: ScheduleResult[] = [];
     const seenHashes = new Set<string>();
     let generationAttempts = 0;
@@ -111,18 +127,29 @@ export class Scheduler {
     let currentTeachers = [...this.teachers];
     const relaxer = new ConstraintRelaxer(currentSubjects, currentTeachers);
 
+    if (log) log(`목표: ${minCount}개 시간표 생성`, 'info');
+
     while (results.length < minCount && generationAttempts < maxAttempts) {
+      if (shouldCancel && shouldCancel()) {
+        if (log) log('생성이 중단되었습니다.', 'warning');
+        break;
+      }
+
       generationAttempts++;
+      if (log) log(`[${generationAttempts}/${maxAttempts}] 시간표 생성 시도 중... (현재 ${results.length}/${minCount}개 완료)`);
 
       const randomSeed = Math.random() * 1000000;
       const cspSolver = new CSPSolver(this.config, currentSubjects, currentTeachers, this.classes, randomSeed);
       let entries = cspSolver.solve();
 
       if (entries.length === 0) {
+        if (log) log(`  → 해결 실패`, 'warning');
+        
         // 생성 실패 시 완화 시도
         if (generationAttempts > 10 && relaxationAttempts < 3) {
           const lastResult = results[results.length - 1];
           if (lastResult) {
+            if (log) log(`  → 제약조건 완화 시도 중...`, 'info');
             const suggestions = relaxer.generateSuggestions(lastResult.violations);
             if (suggestions.length > 0) {
               const suggestion = suggestions[0];
@@ -133,6 +160,7 @@ export class Scheduler {
                 currentTeachers = relaxer.getRelaxedTeachers();
                 relaxationAttempts++;
                 canRelax = true;
+                if (log) log(`  ✅ 제약조건 완화 적용 (${relaxationAttempts}번째)`, 'success');
                 continue;
               }
             }
@@ -141,8 +169,11 @@ export class Scheduler {
         continue;
       }
 
+      if (log) log(`  → 초기 해결 완료 (${entries.length}개 항목)`);
+
       // 최적화
       entries = optimizer.optimize(entries, currentSubjects, currentTeachers, this.config, this.classes);
+      if (log) log(`  → 최적화 완료`);
 
       // 검증
       const validator = new ConstraintValidator(entries, currentSubjects, currentTeachers, this.classes);
@@ -152,6 +183,7 @@ export class Scheduler {
       // 해시 생성 (중복 체크용)
       const hash = this.generateHash(entries);
       if (seenHashes.has(hash)) {
+        if (log) log(`  → 중복 시간표 (건너뜀)`, 'warning');
         continue; // 중복된 시간표는 제외
       }
       seenHashes.add(hash);
@@ -170,6 +202,9 @@ export class Scheduler {
       const criticalViolations = violations.filter(v => v.type === 'critical');
       if (criticalViolations.length === 0) {
         results.push(result);
+        if (log) log(`  ✅ 시간표 ${results.length}번째 생성 완료! (점수: ${score.toFixed(2)})`, 'success');
+      } else {
+        if (log) log(`  ⚠️ Critical 위반 ${criticalViolations.length}개로 제외`, 'warning');
       }
     }
 

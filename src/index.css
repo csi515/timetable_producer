@@ -27,13 +27,6 @@
     @apply text-2xl font-bold text-text-primary m-0;
   }
 
-  .template-button-minimal {
-    @apply bg-white border border-border px-4 py-2 rounded-sm font-semibold text-text-secondary cursor-pointer transition-all duration-200;
-  }
-
-  .template-button-minimal:hover {
-    @apply bg-bg text-text-primary;
-  }
 
   /* Modern Step Indicator */
   .step-indicator-modern {
@@ -313,11 +306,11 @@
 
   /* Modern Class Grid */
   .modern-class-grid {
-    @apply grid grid-cols-[repeat(auto-fill_minmax(120px_1fr))] gap-3 mb-4;
+    @apply grid grid-cols-[repeat(auto-fill_minmax(80px_1fr))] gap-2 mb-4 max-w-2xl;
   }
 
   .modern-class-tag {
-    @apply p-2.5 bg-bg border border-border rounded-sm text-center font-medium text-sm text-text-primary;
+    @apply p-1.5 bg-bg border border-border rounded-sm text-center font-medium text-xs text-text-primary;
   }
 
   .summary-box {
@@ -437,6 +430,55 @@
     @apply bg-error/10 border border-error text-error;
   }
 
+  /* Generation Log */
+  .generation-log-container {
+    @apply bg-white border border-border rounded-lg overflow-hidden mt-4;
+  }
+
+  .generation-log-header {
+    @apply bg-bg px-4 py-3 border-b border-border;
+  }
+
+  .generation-log-header h4 {
+    @apply text-sm font-semibold text-text-primary m-0;
+  }
+
+  .generation-log-content {
+    @apply p-4 max-h-96 overflow-y-auto;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .generation-log-item {
+    @apply flex gap-3 py-1;
+  }
+
+  .generation-log-item .log-time {
+    @apply text-text-secondary shrink-0;
+    min-width: 80px;
+  }
+
+  .generation-log-item .log-message {
+    @apply flex-1;
+  }
+
+  .generation-log-item.log-info {
+    @apply text-text-primary;
+  }
+
+  .generation-log-item.log-success {
+    @apply text-success;
+  }
+
+  .generation-log-item.log-warning {
+    @apply text-yellow-600;
+  }
+
+  .generation-log-item.log-error {
+    @apply text-error;
+  }
+
   /* Constraints Page */
   .constraints-summary {
     @apply flex flex-col gap-6;
@@ -534,7 +576,7 @@
   }
 
   .timetable-cell.available {
-    @apply bg-white text-transparent;
+    @apply bg-white;
   }
 
   .timetable-cell.unavailable {
@@ -579,7 +621,6 @@
   .tabs,
   .generate-button-container,
   .ad-container,
-  .template-button-minimal,
   button,
   footer {
     display: none !important;
